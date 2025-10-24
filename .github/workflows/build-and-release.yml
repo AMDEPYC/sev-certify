@@ -6,6 +6,10 @@ on:
         description: 'Replace existing development assets (if any)'
         required: false
         type: boolean
+      beacon_owner:
+        description: 'Beacon Repo Owner (optional)'
+        required: false
+        type: string
   pull_request:
   push:  
     paths-ignore:
@@ -79,6 +83,11 @@ jobs:
           sudo sed -i 's/noble/plucky/g' /etc/apt/sources.list.d/ubuntu.sources || true
           sudo apt update
           sudo apt install -y mkosi
+
+      - name: Set dynamic mkosi vars
+        if: github.event.inputs.beacon_owner != ''
+        run: |
+          sed -i "/^\[Build\]/a\Environment=BEACON_OWNER=${{ github.event.inputs.beacon_owner }}" modules/beacon/mkosi.conf
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
         run: |

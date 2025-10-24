@@ -2,10 +2,12 @@
 set -euo pipefail
 set -x
 
+BEACON_OWNER="${BEACON_OWNER:-AMDEPYC}"
+
 # Fetch latest release tag from GitHub API using jq
-LATEST_TAG=$(curl -s https://api.github.com/repos/AMDEPYC/beacon/releases/latest \
+LATEST_TAG=$(curl -s https://api.github.com/repos/${BEACON_OWNER}/beacon/releases/latest \
   | jq -r '.tag_name')
 
 # Download and install into DESTDIR with correct permissions
-curl -fsSL "https://github.com/AMDEPYC/beacon/releases/download/${LATEST_TAG}/beacon-linux-x86_64" \
+curl -fsSL "https://github.com/${BEACON_OWNER}/beacon/releases/download/${LATEST_TAG}/beacon-linux-x86_64" \
   | install -D -m 0755 /dev/stdin "${DESTDIR}/usr/local/bin/beacon"
