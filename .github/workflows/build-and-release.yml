@@ -69,6 +69,8 @@ jobs:
             release: 10
           - distro: rocky
             release: 10
+          - distro: debian
+            release: forky
 
     steps:
       - name: Checkout
