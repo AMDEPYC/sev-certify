@@ -1,0 +1,108 @@
+name: Update Certification Matrix
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  update-matrix:
+    if: contains(github.event.issue.labels.*.name, 'certificate') && github.event.issue.milestone != null
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update README
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Read the README content
+            const readmePath = 'README.md';
+            const content = fs.readFileSync(readmePath, 'utf8');
+
+            // Get issue details
+            const issue = context.payload.issue;
+            const milestone = issue.milestone.title;
+
+            // Find distribution label (format: "os-<string>" or "os-<string>-<number>")
+            const distroLabel = issue.labels.find(label => label.name.match(/^os-[a-zA-Z]+(?:-\d+(?:\.\d+)?)?$/i));
+            if (!distroLabel) {
+              console.log('Could not find distribution label in format "os-<string>" or "os-<string>-<number>"');
+              return;
+            }
+
+            // Convert label to OS name (e.g., "os-ubuntu-25.04" to "Ubuntu 25.04" or "os-ubuntu" to "Ubuntu")
+            const labelParts = distroLabel.name.split('-');
+            if (labelParts.length < 2) {
+              console.log('Distribution label does not have expected format "os-<string>" or "os-<string>-<number>"');
+              return;
+            }
+            const os = labelParts[1];
+            const version = labelParts.length > 2 ? labelParts.slice(2).join('-') : '';
+            const osName = version ? `${os.charAt(0).toUpperCase() + os.slice(1)} ${version}` : os.charAt(0).toUpperCase() + os.slice(1);
+            const osPattern = version ? new RegExp(`^\\|\\s*${os}\\s+${version}\\s*\\|`, 'i') : new RegExp(`^\\|\\s*${os}\\s*\\|`, 'i');
+
+            // Create new table row content
+            const newStatus = '✅'; // Assuming new certification issues indicate passing
+            const certificationCell = `[${milestone}](${issue.html_url})`;
+            const newRow = `| ${osName} | ${newStatus} | ${certificationCell} |`;
+
+            // Replace existing row or add new row
+            const lines = content.split('\n');
+            let tableStart = -1;
+            let tableEnd = -1;
+            let updated = false;
+
+            // Find the table boundaries
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].includes('| OS |  Status |  Certification Level |')) {
+                tableStart = i;
+              } else if (tableStart !== -1 && lines[i].trim() === '') {
+                tableEnd = i;
+                break;
+              }
+            }
+
+            if (tableStart === -1) {
+              console.log('Could not find certification matrix table');
+              return;
+            }
+
+            // Update existing row or add new row
+            for (let i = tableStart + 2; i < tableEnd; i++) {
+              if (osPattern.test(lines[i])) {
+                // Extract existing OS name from the current line
+                const existingName = lines[i].match(/^\|\s*([^|]+?)\s*\|/)[1];
+                // Create new row with existing OS name
+                const updatedRow = `| ${existingName} | ${newStatus} | ${certificationCell} |`;
+                lines[i] = updatedRow;
+                updated = true;
+                break;
+              }
+            }
+
+            if (!updated) {
+              // Add new row before table end
+              lines.splice(tableEnd, 0, newRow);
+            }
+
+            // Write back to README
+            fs.writeFileSync(readmePath, lines.join('\n'));
+
+            // Create commit
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: readmePath,
+              message: `Update certification matrix for ${osName}`,
+              content: Buffer.from(lines.join('\n')).toString('base64'),
+              sha: (await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: readmePath
+              })).data.sha
+            });
