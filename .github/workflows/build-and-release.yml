@@ -62,9 +62,9 @@ jobs:
           - distro: fedora
             release: 41
           - distro: ubuntu
-            release: plucky
+            release: 25.04
           - distro: debian
-            release: trixie
+            release: 13
           - distro: centos
             release: 10
           - distro: rocky

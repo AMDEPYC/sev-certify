@@ -2,7 +2,9 @@
 set -eux
 
 # Expected: mkosi sets $DISTRIBUTION and $RELEASE (e.g. fedora and 41)
-GUEST_IMAGE_ID="guest-${DISTRIBUTION}-${RELEASE}"
+# If version is set for distros that set release to name and not numbered version,
+# set to versioned number instead.
+GUEST_IMAGE_ID="guest-${DISTRIBUTION}-${VERSION:-$RELEASE}"
 
 # Validate we have a matching guest configuration  
 GUEST_CONFIG_DIR="${SRCDIR}/images/${GUEST_IMAGE_ID}"
