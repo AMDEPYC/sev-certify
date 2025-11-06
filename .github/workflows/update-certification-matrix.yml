@@ -28,14 +28,17 @@ jobs:
             const issue = context.payload.issue;
             const milestone = issue.milestone.title;
 
-            // Find distribution label (format: "os-<string>" or "os-<string>-<number>")
-            const distroLabel = issue.labels.find(label => label.name.match(/^os-[a-zA-Z]+(?:-\d+(?:\.\d+)?)?$/i));
+            /// Find distribution label (format: "os-<string>", "os-<string>-<number>", or "os-<string>-<string>")
+            const distroLabel = issue.labels.find(label =>
+              label.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)?$/i)
+            );
+            
             if (!distroLabel) {
-              console.log('Could not find distribution label in format "os-<string>" or "os-<string>-<number>"');
+              console.log('Could not find distribution label in format "os-<string>", "os-<string>-<number>", or "os-<string>-<string>"');
               return;
             }
 
-            // Convert label to OS name (e.g., "os-ubuntu-25.04" to "Ubuntu 25.04" or "os-ubuntu" to "Ubuntu")
+            // Convert label to OS name (e.g., "os-ubuntu-25.04" to "Ubuntu 25.04" or "os-debian-forky" to "Debian forky")
             const labelParts = distroLabel.name.split('-');
             if (labelParts.length < 2) {
               console.log('Distribution label does not have expected format "os-<string>" or "os-<string>-<number>"');
@@ -43,7 +46,10 @@ jobs:
             }
             const os = labelParts[1];
             const version = labelParts.length > 2 ? labelParts.slice(2).join('-') : '';
-            const osName = version ? `${os.charAt(0).toUpperCase() + os.slice(1)} ${version}` : os.charAt(0).toUpperCase() + os.slice(1);
+
+            // Capitalize first letter of OS and version (if version is alphabetical)
+            const capitalize = str => str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+            const osName = version ? `${capitalize(os)} ${capitalize(version)}` : capitalize(os);
             const osPattern = version ? new RegExp(`^\\|\\s*${os}\\s+${version}\\s*\\|`, 'i') : new RegExp(`^\\|\\s*${os}\\s*\\|`, 'i');
 
             // Create new table row content
