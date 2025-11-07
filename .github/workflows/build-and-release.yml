@@ -71,6 +71,8 @@ jobs:
             release: 10
           - distro: debian
             release: forky
+          - distro: opensuse
+            release: tumbleweed
 
     steps:
       - name: Checkout

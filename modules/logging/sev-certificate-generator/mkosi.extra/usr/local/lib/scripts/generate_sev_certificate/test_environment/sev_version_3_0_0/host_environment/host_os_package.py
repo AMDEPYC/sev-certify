@@ -11,6 +11,7 @@ class HostOSPackage:
     qemu["debian"]="qemu-system"
     qemu["centos"]="qemu-kvm-core"
     qemu["rocky"]="qemu-kvm-core"
+    qemu["opensuse-tumbleweed"]="qemu"
 
     ovmf={}
     ovmf["fedora"]="edk2-ovmf"
@@ -18,4 +19,4 @@ class HostOSPackage:
     ovmf["debian"]="ovmf"
     ovmf["centos"]="edk2-ovmf"
     ovmf["rocky"]="edk2-ovmf"
-
+    ovmf["opensuse-tumbleweed"]="qemu-ovmf-x86_64"

@@ -13,7 +13,7 @@ fi
 package="$1"
 
 declare -A package_managers
-package_managers=( ["fedora"]="rpm" ["ubuntu"]="apt" ["debian"]="apt" ["centos"]="rpm" ["rocky"]="rpm" )
+package_managers=( ["fedora"]="rpm" ["ubuntu"]="apt" ["debian"]="apt" ["centos"]="rpm" ["rocky"]="rpm" ["opensuse-tumbleweed"]="rpm" )
 
 os_name=$(grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
 os_package_manager=${package_managers[${os_name}]}
