@@ -112,3 +112,60 @@ jobs:
                 path: readmePath
               })).data.sha
             });
+  close-duplicates:
+    if: contains(github.event.issue.labels.*.name, 'certificate') && github.event.issue.milestone != null
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close older certification issues with same OS label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const milestone = issue.milestone.title;
+
+            // Find the OS label (format: "os-<string>", "os-<string>-<number>", or "os-<string>-<string>")
+            const osLabel = issue.labels.find(label =>
+              label.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)?$/i)
+            );
+
+            if (!osLabel) {
+              console.log('No OS label found, skipping duplicate check.');
+              return;
+            }
+
+            // Get all open issues in the same milestone
+            const { data: allIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              milestone: issue.milestone.number,
+              per_page: 100
+            });
+
+            for (const other of allIssues) {
+              if (other.number === issue.number) continue;
+
+              // Check if other issue has the same two labels
+              const hasCertLabel = other.labels.some(l => l.name === 'certificate');
+              const hasSameOsLabel = other.labels.some(l => l.name === osLabel.name);
+
+              if (hasCertLabel && hasSameOsLabel) {
+                console.log(`Closing older duplicate issue #${other.number} for ${osLabel.name}`);
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: other.number,
+                  body: `Closing as duplicate of #${issue.number} (newer certification issue for **${osLabel.name}** on milestone **${milestone}**).`
+                });
+
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: other.number,
+                  state: 'closed'
+                });
+              }
+            }
