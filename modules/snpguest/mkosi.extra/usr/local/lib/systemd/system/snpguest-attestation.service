@@ -1,8 +1,8 @@
 [Unit]
 Description=Run SNP Regular Attestation after boot
 DefaultDependencies=no
-After=snpguest-ok.service
-Wants=snpguest-ok.service
+After=snpguest-ok.service network-online.target
+Wants=snpguest-ok.service network-online.target
 
 [Service]
 Type=oneshot
