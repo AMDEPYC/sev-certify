@@ -1,7 +1,7 @@
 # Welcome to SEV OS Certification
 
 
-The purpose of this repository is to provide a unified framework for testing and certifying operating system support for [AMD Secure Encrypted Virtualization (SEV)](https://www.amd.com/en/developer/sev.html) features. These are hardware-enabled security features that provide confidentiality and integrity of VM memory through per-VM encryption keys. Self-service tools are provided to run a series of certification tests using an AMD EPYC server, allowing for any user/organization to verify SEV support on a particular OS. 
+The purpose of this repository is to provide a unified framework for testing and certifying operating system support for [AMD Secure Encrypted Virtualization (SEV)](https://www.amd.com/en/developer/sev.html) features. These are hardware-enabled security features that provide confidentiality and integrity of VM memory through per-VM encryption keys. Self-service tools are provided to run a series of certification tests using an AMD EPYC server, allowing for any user/organization to verify SEV support on a particular OS. Users who are new to AMD Secure Encrypted Virtualization (SEV) are encouraged to consult the introductory guide titled [Getting Started User Guide for SEV](./docs/getting-started-user-guide-for-sev.md) for foundational information and setup instructions..
 
 **Note**: Currently only linux distributions supported by [`mkosi`](https://github.com/systemd/mkosi) are compatible with this framework.
 
