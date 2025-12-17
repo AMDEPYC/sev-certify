@@ -1,0 +1,6 @@
+#!/bin/bash
+set -eux
+
+# Installs cpuid module using pip
+mkosi-chroot \
+	pip3 install --break-system-packages cpuid
