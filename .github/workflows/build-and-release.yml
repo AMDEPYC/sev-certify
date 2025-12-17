@@ -75,6 +75,8 @@ jobs:
             release: 10
           - distro: debian
             release: forky
+          - distro: ubuntu
+            release: "25.10"
 
     steps:
       - name: Checkout
