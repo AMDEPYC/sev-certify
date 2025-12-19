@@ -36,7 +36,8 @@ References:
 
 ### 2. Download `AMDEPYC/dispatch`
 
-Download the [latest dispatch binaries](https://github.com/AMDEPYC/dispatch/releases) through your browser or through `gh`:
+Download the [latest dispatch binaries](https://github.com/AMDEPYC/dispatch/releases)
+through your browser or through `gh`:
 ```
 gh release download -R github.com/AMDEPYC/dispatch --pattern 'dispatch-*'
 chmod a+x dispatch*
@@ -45,43 +46,17 @@ Or clone the repository and build it from source.
 
 ### 3. Run dispatch to start serving images
 
-#### Permissions
+> [!NOTE] 
+> Ensure you have appropriate permissions to download assets and create an issue
+> in the target repository as described in the 
+> [Github Permissions](#github-permissions) section below. A simple way to do
+> this is to authenticate as a user with this permissions using the GitHub CLI's
+> browser option: `gh auth login -h github.com -w -p https`, but you can also
+> use a personal access token (PAT) for more controlled access.
 
-dispatch uses GitHub APIs to download Release Assets and to create Issues in the repo specified on the dispatch command line (see below). Certain permissions are needed for this to work:
-
-##### Option 1
-
-Before running dispatch, run 'gh auth login' and choose to authenticate via the web browser flow.
-
-##### Option 2
-
-Before running dispatch, run 'gh auth login' and choose to authenticate by pasting an authentication token. 
-
-  Fine-grained PAT
-  
-    If using a fine-grained token (PAT), it must have, at a minimum, the following permissions:
-    
-      Contents: Read-only access
-      
-      Issues: Read and write access
-  
-  Classic PAT
-  
-    If using a classic token (PAT), it must have, at a minimum, the following permission:
-    
-      repo
-
-##### Option 3
-
-When running dispatch, use the --token option and specify either a fine-grained or a classic PAT as described above.
-
-##### Option 4
-
-Before running dispatch, set an environment variable named GITHUB_TOKEN to either a fine-grained or a classic PAT as described above.
-
----
-
-If you would like to use the images available in AMD's sev-certify repository & post the results in an issue there:
+This example will download the images from the `devel` release tag in 
+the `AMDEPYC/sev-certify` repository and post results in that repository's
+issues:
 ```
 ./dispatch-linux-x86_64 --owner AMDEPYC --repo sev-certify --tag devel
 ```
@@ -91,15 +66,25 @@ You can optionally add a filter at the end if you want to run on a subset of ima
 ./dispatch-linux-x86_64 --owner AMDEPYC --repo sev-certify --tag devel ubuntu
 ```
 
-You can also fork the `AMDEPYC/sev-certify` repository to build the images and have certification results posted in that repository's issues - see [Forking sev-certify](#forking-amdepycsev-certify-for-certification-testing) for more information.
+You can also fork the `AMDEPYC/sev-certify` repository to build the images and
+have certification results posted in that repository's issues - see
+[Forking sev-certify](#forking-amdepycsev-certify-for-certification-testing) for
+more information.
 ```
 ./dispatch-linux-x86_64 --owner <your org/username> --repo sev-certify --tag devel
 ```
 
-If you run the first command with no filter specified, you should see the following screen:  
+If you run the first command with no filter specified, you should see the
+following screen:  
 ![Dispatch Example](./images/dispatch-example.png)
 
-While this screen is up, the images specified are queued for testing. Each image has an status icon to the left of its name. See [Workflow-Stats](https://github.com/AMDEPYC/dispatch?tab=readme-ov-file#workflow-states) for a table of the icon meanings. Pressing q will kill the dispatch process.
+While this screen is up, the images specified are queued for testing. Each image
+has an status icon to the left of its name. See
+[Workflow-Stats](https://github.com/AMDEPYC/dispatch?tab=readme-ov-file#workflow-states)
+for a table of the icon meanings. Pressing q will kill the dispatch process.
+
+If your system cannot directly contact github, see [Github Proxy](#github-proxy)
+for setting the appropriate ENV vars.
 
 ## Test Server Setup
 
@@ -163,3 +148,55 @@ You can now run dispatch while specifying the new repository:
 ./dispatch-linux-x86_64 --owner <your-org or username> --repo sev-certify --tag devel
 ```
 
+## Appendix
+
+### Github Proxy
+If your Dispatch host is behind a proxy, you can set the standard
+environment variables `HTTP_PROXY` and `HTTPS_PROXY` to
+allow dispatch to access GitHub APIs and download Release Assets.
+
+```
+HTTP_PROXY="http://some-proxy.domain:port" HTTPS_PROXY="http://some-proxy.domain:port" ./dispatch-linux-x86_64 --owner AMDEPYC --repo sev-certify --tag main ubuntu
+```
+
+### Github Permissions
+
+Dispatch uses GitHub APIs to download Release Assets and to create Issues in the
+repo specified on the dispatch command line. The permissions required are:
+- Read access to Releases (to download the images)
+- Write access to Issues (to create the issue with certification results)
+
+There are several ways to provide these permissions to dispatch:
+
+#### 1) GitHub CLI authentication - Web Browser
+
+Before running dispatch, run 'gh auth login' and choose to authenticate via the
+web browser flow as a user that has the accesses listed above.
+
+```
+gh auth login -h github.com -w -p https
+```
+
+#### 2) GitHub CLI authentication - Token
+
+Before running dispatch, run 'gh auth login' and choose to authenticate by
+pasting an authentication token. The two types of tokens that can be used are:
+
+- Fine-grained PAT: If using a fine-grained token (PAT), it must have the
+  following permissions:
+    - Contents: Read-only access
+    - Issues: Read and write access
+  
+- Classic PAT: If using a classic token (PAT), it must have the following
+  permission:
+    - repo
+
+#### 3) Directly specify a token to dispatch via command line option
+
+When running dispatch, use the --token option and specify either a fine-grained
+or a classic PAT as described above.
+
+##### 4) Directly specify a token via environment variable
+
+Before running dispatch, set an environment variable named GITHUB_TOKEN to 
+either a fine-grained or a classic PAT as described above.
