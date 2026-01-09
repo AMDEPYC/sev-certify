@@ -25,6 +25,9 @@ else
     OS_LABEL="${OS_NAME}"
 fi
 
+# Fetch AMD processor model
+PROC_LABEL=$(/usr/bin/python3 /usr/local/bin/scripts/get_processor_model.py series)
+
 # Loop over to generate beacon report for all SEV certificates
 for sev_version in "${SEV_VERSIONS[@]}"; do
   # Build title
@@ -37,13 +40,20 @@ for sev_version in "${SEV_VERSIONS[@]}"; do
   # Obtain SEV Version Content
   SEV_CERT_FILE="${HOME:-/root}/sev_certificate_v${sev_version}.txt"
 
-  # Call beacon
+  # Set up parameters
+  PARAMS=()
+
+  # Add labels
+  PARAMS+=("--label" "certificate")
+  PARAMS+=("--label" "os-${OS_LABEL}")
+  PARAMS+=("--label" "proc-${PROC_LABEL}")
+
+  # Add milestone for valid test
   if [ -e "${SEV_CERT_FILE}" ] && [ -z "$(grep "❌" "${SEV_CERT_FILE}")" ]; then
-    # Add milestone if no errors encountered
-    beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" --label "certificate" --label "os-${OS_LABEL}" --milestone "$MILESTONE"
-  else
-    beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" --label "certificate" --label "os-${OS_LABEL}"
+    PARAMS+=("--milestone" "$MILESTONE")
   fi
+
+  beacon report --title "$SEV_TITLE" --body "$SEV_CERT_FILE" "${PARAMS[@]}"
 
   echo "Published SEV certificate via beacon with title: $SEV_TITLE"
 done
