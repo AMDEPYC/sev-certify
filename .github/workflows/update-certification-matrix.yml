@@ -4,10 +4,6 @@ on:
   issues:
     types: [opened]
 
-concurrency:
-  group: update-certification-matrix
-  cancel-in-progress: false
-
 jobs:
   update-matrix:
     if: contains(github.event.issue.labels.*.name, 'certificate') && github.event.issue.milestone != null
@@ -18,194 +14,195 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update README
+      - name: Update Certification Matrix
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const path = require('path');
-
-            // Get issue details
-            const issue = context.payload.issue;
+            const { issue } = context.payload;
             const milestone = issue.milestone.title;
-            const readmePath = 'README.md';
-
-            /// Find distribution label (format: "os-<string>", "os-<string>-<number>", or "os-<string>-<string>")
-            const distroLabel = issue.labels.find(label =>
-              label.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)?$/i)
-            );
             
-            if (!distroLabel) {
-              console.log('Could not find distribution label in format "os-<string>", "os-<string>-<number>", or "os-<string>-<string>"');
-              return;
-            }
+            // Extract and validate labels
+            const procLabel = issue.labels.find(l => l.name.match(/^proc-\d+$/i));
+            const distroLabel = issue.labels.find(l => l.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)?$/i));
+            if (!procLabel || !distroLabel) return console.log('Missing processor or OS label');
+            
+            const procSeries = procLabel.name.replace(/^proc-/i, '');
+            const [, os, ...versionParts] = distroLabel.name.split('-');
+            const version = versionParts.join(' ');
+            const capitalize = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+            const osName = version ? `${capitalize(os)} ${version}` : capitalize(os);
+            const osPattern = version 
+              ? new RegExp(`^\\|\\s*${capitalize(os)}\\s+${version.replace(/\./g, '\\.')}\\s*\\|`, 'i')
+              : new RegExp(`^\\|\\s*${capitalize(os)}\\s*\\|`, 'i');
+            const certVersion = milestone.match(/^c(\d+\.\d+)/)?.[1];
+            if (!certVersion) return console.log(`Invalid milestone format: ${milestone}`);
 
-            // Convert label to OS name (e.g., "os-ubuntu-25.04" to "Ubuntu 25.04" or "os-debian-forky" to "Debian forky")
-            const labelParts = distroLabel.name.split('-');
-            if (labelParts.length < 2) {
-              console.log('Distribution label does not have expected format "os-<string>" or "os-<string>-<number>"');
-              return;
-            }
-            const os = labelParts[1];
-            const version = labelParts.length > 2 ? labelParts.slice(2).join('-') : '';
+            console.log(`Updating ${osName} for processor ${procSeries}, cert ${certVersion}`);
 
-            // Capitalize first letter of OS and version (if version is alphabetical)
-            const capitalize = str => str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
-            const osName = version ? `${capitalize(os)} ${capitalize(version)}` : capitalize(os);
-            const osPattern = version ? new RegExp(`^\\|\\s*${os}\\s+${version}\\s*\\|`, 'i') : new RegExp(`^\\|\\s*${os}\\s*\\|`, 'i');
+            // Map processor series to their native certification level
+            const processorNativeLevel = {
+              '7003': '3.0',  // Milan
+              '9004': '3.1',  // Genoa
+              '8005': '4.0',  // Sorano
+              '9005': '4.1'   // Turin
+            };
 
-            // Use a single branch for all certification matrix updates
-            const branchName = `update-certification-matrix`;
-            const commitMessage = `Update certification matrix for ${osName}`;
+            // Helper to get and decode file
+            const getFile = async (path, ref) => {
+              const { data } = await github.rest.repos.getContent({ owner: context.repo.owner, repo: context.repo.repo, path, ref });
+              return { lines: Buffer.from(data.content, 'base64').toString('utf8').split('\n'), sha: data.sha };
+            };
 
-            // Get the default branch
-            const { data: repo } = await github.rest.repos.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo
-            });
-            const defaultBranch = repo.default_branch;
+            // Helper function to update table rows
+            const updateTable = (lines, tableStart, tableEnd, columnIndex) => {
+              const certCell = `[${milestone}](${issue.html_url})`;
+              
+              // Try to update existing row
+              for (let i = tableStart; i < tableEnd; i++) {
+                if (osPattern.test(lines[i])) {
+                  const cells = lines[i].split('|').map(c => c.trim());
+                  const filteredCells = [cells[0], ...cells.slice(1).filter(c => c)];
+                  while (filteredCells.length <= columnIndex) filteredCells.push('');
+                  filteredCells[2] = '✅';
+                  filteredCells[columnIndex + 1] = certCell;
+                  lines[i] = filteredCells.join(' | ').replace(/^\s*\|?\s*/, '| ').replace(/\s*$/, ' |');
+                  return;
+                }
+              }
+              
+              // Insert new row alphabetically
+              let insertIndex = tableEnd;
+              for (let i = tableStart; i < tableEnd; i++) {
+                const match = lines[i].match(/^\|\s*([^|]+?)\s*\|/);
+                if (match && osName.localeCompare(match[1].trim(), 'en', { sensitivity: 'base' }) < 0) {
+                  insertIndex = i;
+                  break;
+                }
+              }
+              
+              const cells = [osName, '✅'];
+              while (cells.length < columnIndex) cells.push('');
+              cells[columnIndex] = certCell;
+              lines.splice(insertIndex, 0, '| ' + cells.join(' | ') + ' |');
+            };
 
-            // Get the SHA of the default branch
-            const { data: refData } = await github.rest.git.getRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: `heads/${defaultBranch}`
-            });
-            const baseSha = refData.object.sha;
+            // Setup branch and repo
+            const branchName = 'update-certification-matrix';
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const { data: repoData } = await github.rest.repos.get(repo);
+            const defaultBranch = repoData.default_branch;
 
-            // Check if branch already exists
-            let branchExists = false;
-            try {
-              await github.rest.git.getRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `heads/${branchName}`
-              });
-              branchExists = true;
-              console.log(`Branch ${branchName} already exists, will fast-forward to main`);
-            } catch (error) {
-              if (error.status !== 404) throw error;
-              console.log(`Creating new branch ${branchName}`);
-            }
+            // Helper to find table boundaries in certifications.md
+            const findTable = (lines, procSeries, certVersion) => {
+              for (let i = 0; i < lines.length; i++) {
+                if (lines[i].startsWith(`AMD EPYC ${procSeries}`)) {
+                  for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
+                    if (lines[j].includes('| OS |')) {
+                      const headers = lines[j].split('|').map(h => h.trim()).filter(h => h);
+                      const columnIndex = headers.findIndex(h => h.includes(`${certVersion} Certification`));
+                      if (columnIndex === -1) return null;
+                      const tableStart = j + 2; // Start after separator line
+                      let tableEnd = tableStart;
+                      // Find table end - stop at blank line or next section
+                      for (let k = tableStart; k < lines.length; k++) {
+                        if (lines[k].trim() === '' || lines[k].match(/^AMD EPYC \d+/)) {
+                          tableEnd = k;
+                          break;
+                        }
+                        tableEnd = k + 1; // Include current row
+                      }
+                      return { tableStart, tableEnd, columnIndex };
+                    }
+                  }
+                }
+              }
+              return null;
+            };
 
-            // Create or update branch to point to latest main
-            if (!branchExists) {
-              await github.rest.git.createRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `refs/heads/${branchName}`,
-                sha: baseSha
-              });
-              console.log(`Created branch ${branchName} from main`);
-            } else {
-              // Try to rebase the branch onto main
+            // Retry loop to handle concurrent updates
+            const maxRetries = 5;
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
               try {
-                await github.rest.git.updateRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `heads/${branchName}`,
-                  sha: baseSha,
-                  force: false
+                console.log(`Attempt ${attempt}/${maxRetries}`);
+                
+                // Setup branch
+                const { data: refData } = await github.rest.git.getRef({ ...repo, ref: `heads/${defaultBranch}` });
+                const { data: existingPRs } = await github.rest.pulls.list({ ...repo, state: 'open', head: `${context.repo.owner}:${branchName}` });
+                
+                // Delete and recreate branch if no PR exists, otherwise update it
+                if (existingPRs.length === 0) {
+                  await github.rest.git.deleteRef({ ...repo, ref: `heads/${branchName}` }).catch(e => { if (e.status !== 404) throw e; });
+                  await github.rest.git.createRef({ ...repo, ref: `refs/heads/${branchName}`, sha: refData.object.sha });
+                } else {
+                  await github.rest.git.updateRef({ ...repo, ref: `heads/${branchName}`, sha: refData.object.sha, force: false }).catch(() => {});
+                }
+
+                // Update certifications.md
+                const certPath = 'docs/certifications.md';
+                let { lines, sha } = await getFile(certPath, branchName);
+                const table = findTable(lines, procSeries, certVersion);
+                if (!table) return console.log(`Table or column not found for processor ${procSeries}, cert ${certVersion}`);
+                
+                updateTable(lines, table.tableStart, table.tableEnd, table.columnIndex);
+                await github.rest.repos.createOrUpdateFileContents({
+                  ...repo, path: certPath, message: `cert: Update certification matrix for ${osName}`,
+                  content: Buffer.from(lines.join('\n')).toString('base64'), sha, branch: branchName
                 });
-                console.log(`Rebased ${branchName} onto main`);
+
+                // Update README.md if native certification level
+                if (processorNativeLevel[procSeries] === certVersion) {
+                  const readmePath = 'README.md';
+                  let { lines: readmeLines, sha: readmeSha } = await getFile(readmePath, branchName);
+                  const headerIdx = readmeLines.findIndex(l => l.includes('| OS |') && l.includes('Status'));
+                  
+                  if (headerIdx !== -1) {
+                    const headers = readmeLines[headerIdx].split('|').map(h => h.trim()).filter(h => h);
+                    const readmeColumnIndex = headers.findIndex(h => h.includes(`${certVersion} Certification`));
+                    
+                    if (readmeColumnIndex !== -1) {
+                      const readmeTableStart = headerIdx + 2;
+                      let readmeTableEnd = readmeLines.findIndex((l, i) => i > readmeTableStart && (l.trim() === '' || !l.includes('|')));
+                      if (readmeTableEnd === -1) readmeTableEnd = readmeLines.length;
+                      
+                      updateTable(readmeLines, readmeTableStart, readmeTableEnd, readmeColumnIndex);
+                      await github.rest.repos.createOrUpdateFileContents({
+                        ...repo, path: readmePath, message: `cert: Update master certification table for ${osName}`,
+                        content: Buffer.from(readmeLines.join('\n')).toString('base64'), sha: readmeSha, branch: branchName
+                      });
+                    }
+                  }
+                }
+
+                // Create or update PR
+                if (existingPRs.length > 0) {
+                  await github.rest.issues.createComment({
+                    ...repo,
+                    issue_number: existingPRs[0].number,
+                    body: `Updated **${osName}** (${milestone}) - refs #${issue.number}`
+                  });
+                } else {
+                  await github.rest.pulls.create({
+                    ...repo,
+                    title: 'cert: Update certification matrix',
+                    head: branchName,
+                    base: defaultBranch,
+                    body: `Automatically updating certification matrix.\n\nStarted with: **${osName}** (${milestone}) - refs #${issue.number}`
+                  });
+                }
+                
+                // Success - exit retry loop
+                break;
+                
               } catch (error) {
-                // If update fails, it means branch is ahead or diverged - this is fine
-                console.log(`Branch ${branchName} is already up to date or ahead of main`);
+                // Check if it's a retryable error (conflict, not found, or unprocessable)
+                if ((error.status === 404 || error.status === 409 || error.status === 422) && attempt < maxRetries) {
+                  console.log(`Retryable error (${error.status}: ${error.message}), retrying in ${attempt} seconds...`);
+                  await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                  continue;
+                }
+                // Re-throw if not retryable or max retries reached
+                throw error;
               }
-            }
-
-            // Get current file content from the branch (after fast-forward)
-            const { data: fileData } = await github.rest.repos.getContent({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              path: readmePath,
-              ref: branchName
-            });
-            const content = Buffer.from(fileData.content, 'base64').toString('utf8');
-
-            // Create new table row content
-            const newStatus = '✅'; // Assuming new certification issues indicate passing
-            const certificationCell = `[${milestone}](${issue.html_url})`;
-            const newRow = `| ${osName} | ${newStatus} | ${certificationCell} |`;
-
-            // Replace existing row or add new row
-            const lines = content.split('\n');
-            let tableStart = -1;
-            let tableEnd = -1;
-            let updated = false;
-
-            // Find the table boundaries
-            for (let i = 0; i < lines.length; i++) {
-              if (lines[i].includes('| OS |  Status |  Certification Level |')) {
-                tableStart = i;
-              } else if (tableStart !== -1 && lines[i].trim() === '') {
-                tableEnd = i;
-                break;
-              }
-            }
-
-            if (tableStart === -1) {
-              console.log('Could not find certification matrix table');
-              return;
-            }
-
-            // Update existing row or add new row
-            for (let i = tableStart + 2; i < tableEnd; i++) {
-              if (osPattern.test(lines[i])) {
-                // Extract existing OS name from the current line
-                const existingName = lines[i].match(/^\|\s*([^|]+?)\s*\|/)[1];
-                // Create new row with existing OS name
-                const updatedRow = `| ${existingName} | ${newStatus} | ${certificationCell} |`;
-                lines[i] = updatedRow;
-                updated = true;
-                break;
-              }
-            }
-
-            if (!updated) {
-              // Add new row before table end
-              lines.splice(tableEnd, 0, newRow);
-            }
-
-            // Commit changes to the branch
-            await github.rest.repos.createOrUpdateFileContents({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              path: readmePath,
-              message: commitMessage,
-              content: Buffer.from(lines.join('\n')).toString('base64'),
-              sha: fileData.sha,
-              branch: branchName
-            });
-
-            // Check if PR already exists for this branch
-            const { data: existingPRs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              head: `${context.repo.owner}:${branchName}`
-            });
-
-            if (existingPRs.length > 0) {
-              console.log(`PR already exists: #${existingPRs[0].number}`);
-              // Add a comment to the existing PR
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existingPRs[0].number,
-                body: `Updated certification matrix for **${osName}** (${milestone}) - refs #${issue.number}`
-              });
-            } else {
-              // Create new PR
-              const { data: pr } = await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: `Update certification matrix`,
-                head: branchName,
-                base: defaultBranch,
-                body: `This PR automatically updates the certification matrix based on certification issues.\n\nStarted with: **${osName}** (${milestone}) - refs #${issue.number}`
-              });
-              console.log(`Created PR #${pr.number}`);
             }
   close-duplicates:
     if: contains(github.event.issue.labels.*.name, 'certificate') && github.event.issue.milestone != null
@@ -220,13 +217,16 @@ jobs:
             const issue = context.payload.issue;
             const milestone = issue.milestone.title;
 
-            // Find the OS label (format: "os-<string>", "os-<string>-<number>", or "os-<string>-<string>")
+            // Find the OS label and processor label
             const osLabel = issue.labels.find(label =>
               label.name.match(/^os-[a-zA-Z]+(?:-[a-zA-Z0-9.]+)?$/i)
             );
+            const procLabel = issue.labels.find(label =>
+              label.name.match(/^proc-\d+$/i)
+            );
 
-            if (!osLabel) {
-              console.log('No OS label found, skipping duplicate check.');
+            if (!osLabel || !procLabel) {
+              console.log('No OS or processor label found, skipping duplicate check.');
               return;
             }
 
@@ -239,28 +239,21 @@ jobs:
               per_page: 100
             });
 
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            
             for (const other of allIssues) {
-              if (other.number === issue.number) continue;
+              if (other.number === issue.number || other.pull_request) continue;
+              
+              const hasAllLabels = other.labels.some(l => l.name === 'certificate') &&
+                                   other.labels.some(l => l.name === osLabel.name) &&
+                                   other.labels.some(l => l.name === procLabel.name);
 
-              // Check if other issue has the same two labels
-              const hasCertLabel = other.labels.some(l => l.name === 'certificate');
-              const hasSameOsLabel = other.labels.some(l => l.name === osLabel.name);
-
-              if (hasCertLabel && hasSameOsLabel) {
-                console.log(`Closing older duplicate issue #${other.number} for ${osLabel.name}`);
-
+              if (hasAllLabels) {
                 await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
+                  ...repo,
                   issue_number: other.number,
-                  body: `Closing as duplicate of #${issue.number} (newer certification issue for **${osLabel.name}** on milestone **${milestone}**).`
+                  body: `Closing as duplicate of #${issue.number} (newer certification for **${osLabel.name}** on **${procLabel.name}**, milestone **${milestone}**)`
                 });
-
-                await github.rest.issues.update({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: other.number,
-                  state: 'closed'
-                });
+                await github.rest.issues.update({ ...repo, issue_number: other.number, state: 'closed' });
               }
             }
