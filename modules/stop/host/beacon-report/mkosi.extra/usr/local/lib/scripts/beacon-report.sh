@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 set -euo pipefail
 
-SEV_VERSIONS=("3.0-0")
+SEV_VERSIONS=("3.0.0-0")
 SEV_CERT_FILE=""
 
 # Temporarily hardcode the milestone name
@@ -26,7 +26,7 @@ else
 fi
 
 # Fetch AMD processor model
-PROC_LABEL=$(/usr/bin/python3 /usr/local/bin/scripts/get_processor_model.py series)
+PROC_LABEL=$(/usr/bin/python3 /usr/local/lib/scripts/get_processor_model.py series)
 
 # Loop over to generate beacon report for all SEV certificates
 for sev_version in "${SEV_VERSIONS[@]}"; do

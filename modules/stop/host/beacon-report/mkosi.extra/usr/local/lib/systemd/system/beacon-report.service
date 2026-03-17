@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Beacon report to publish certificate
+DefaultDependencies=no
+Wants=report.target
+After=report.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/scripts/beacon-report.sh
+StandardOutput=journal
+StandardError=journal

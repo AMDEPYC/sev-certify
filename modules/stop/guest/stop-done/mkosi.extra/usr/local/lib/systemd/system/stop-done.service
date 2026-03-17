@@ -1,0 +1,11 @@
+[Unit]
+Description=Stop Barrier
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=stop.target

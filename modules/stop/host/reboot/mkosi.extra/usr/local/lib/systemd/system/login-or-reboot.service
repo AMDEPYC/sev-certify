@@ -1,12 +1,11 @@
 [Unit]
 Description=Prompt user to login or reboot after tests
+DefaultDependencies=no
 After=beacon-report.service
+Wants=beacon-report.service
 
 [Service]
-Type=oneshot
+Type=simple
 ExecStart=/usr/local/lib/scripts/login-or-reboot.sh
 StandardOutput=journal
 StandardError=journal
-
-[Install]
-WantedBy=multi-user.target

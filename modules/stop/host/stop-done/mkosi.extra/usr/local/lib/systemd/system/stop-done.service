@@ -1,0 +1,14 @@
+[Unit]
+Description=Stop service barrier
+DefaultDependencies=no
+
+Requires=beacon-report.service login-or-reboot.service
+After=beacon-report.service login-or-reboot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=stop.target
