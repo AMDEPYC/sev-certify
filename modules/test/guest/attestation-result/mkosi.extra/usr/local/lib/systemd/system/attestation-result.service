@@ -1,8 +1,8 @@
 [Unit]
 Description=Fetch SNP Guest Attestation Status inside the guest
 DefaultDependencies=no
-After=network-online.target snpguest-attestation.service
-Wants=network-online.target snpguest-attestation.service
+After=attestation-workflow.service
+Wants=attestation-workflow.service
 
 [Service]
 Type=oneshot
@@ -11,6 +11,3 @@ StandardOutput=journal
 StandardError=journal
 Restart=on-failure
 RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target

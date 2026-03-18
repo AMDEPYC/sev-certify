@@ -1,15 +1,12 @@
 [Unit]
 Description=Run SNP Regular Attestation after boot
 DefaultDependencies=no
-After=snpguest-ok.service
-Wants=snpguest-ok.service
+After=system.target
+Wants=system.target
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/lib/scripts/snpguest_attestation.sh
 StandardOutput=journal+console
 StandardError=journal+console
-LogExtraFields="SEV_VERSION=3.0-0" "SNPGUEST_TEST=3.0-0"
-
-[Install]
-WantedBy=snpguest-tests.target
+LogExtraFields="SEV_VERSION=3.0.0-0" "SNPGUEST_TEST=3.0.0-0"

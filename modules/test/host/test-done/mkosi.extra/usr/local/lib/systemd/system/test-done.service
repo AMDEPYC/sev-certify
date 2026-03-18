@@ -1,0 +1,11 @@
+[Unit]
+Description=Barrier that triggers test services
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=test.target

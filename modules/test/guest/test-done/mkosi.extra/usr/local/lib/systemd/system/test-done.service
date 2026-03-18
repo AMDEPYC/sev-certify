@@ -1,0 +1,14 @@
+[Unit]
+Description=Barrier that triggers test services
+DefaultDependencies=no
+
+Requires=attestation-result.service attestation-workflow.service
+After=attestation-result.service attestation-workflow.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=test.target
