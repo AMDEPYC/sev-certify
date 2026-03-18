@@ -1,7 +1,0 @@
-# Target reached when all boot services are complete
-# Boot services should use: WantedBy=boot.target
-
-[Unit]
-Description=Boot
-After=network-online.target
-Wants=network-online.target

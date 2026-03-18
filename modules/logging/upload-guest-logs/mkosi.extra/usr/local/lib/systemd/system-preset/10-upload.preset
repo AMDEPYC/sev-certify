@@ -1,2 +1,0 @@
-enable systemd-journal-upload.service
-start systemd-journal-upload.service

@@ -1,0 +1,11 @@
+# Target reached when the snp guest has launched.
+# Job services should use: WantedBy=launch.target
+
+[Unit]
+Description=Launch Stage
+
+After=system.target
+Requires=system.target
+
+Wants=launch-done.service
+After=launch-done.service

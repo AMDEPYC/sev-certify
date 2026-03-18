@@ -1,6 +1,0 @@
-#!/bin/bash
-set -eux
-
-# Installs emoji module using pip
-mkosi-chroot \
-	pip3 install  emoji

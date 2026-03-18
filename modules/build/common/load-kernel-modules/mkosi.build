@@ -1,0 +1,22 @@
+#!/bin/bash
+set -eux
+
+os_name=$(grep '^ID=' /buildroot/etc/os-release | cut -d'=' -f2 | tr -d '"')
+
+case "$os_name" in
+  debian|ubuntu|centos)
+    echo "Applying module configuration for $os_name"
+    ;;
+  *)
+    echo "Skipping module configuration for $os_name"
+    exit 0
+    ;;
+esac
+
+mkdir -p "${DESTDIR}/etc/modules-load.d/"
+
+# Load MSR module
+echo "msr" > "${DESTDIR}/etc/modules-load.d/msr.conf"
+
+# Load sev-guest module
+echo "sev-guest" > "${DESTDIR}/etc/modules-load.d/sev-guest.conf"

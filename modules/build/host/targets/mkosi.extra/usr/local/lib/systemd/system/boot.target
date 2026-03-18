@@ -1,0 +1,7 @@
+# Target reached when all boot services are complete
+# Boot services should use: WantedBy=boot.target
+
+[Unit]
+Description=Boot stage
+After=network-online.target avahi-daemon.service
+Requires=network-online.target avahi-daemon.service

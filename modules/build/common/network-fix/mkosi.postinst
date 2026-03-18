@@ -1,0 +1,20 @@
+#!/bin/bash
+set -eux
+
+os_name=$(grep '^ID=' /buildroot/etc/os-release | cut -d'=' -f2 | tr -d '"')
+
+case "$os_name" in
+  rocky|centos)
+    echo "Running network setup for $os_name"
+    ;;
+  *)
+    echo "Skipping network setup for $os_name"
+    exit 0
+    ;;
+esac
+
+# Sets up systemd-networkd
+mkosi-chroot dnf install -y dnf-plugins-core
+mkosi-chroot dnf copr enable -y prymar56/virt10-xen alma-kitten+epel-10-x86_64
+mkosi-chroot dnf install -y systemd-networkd
+

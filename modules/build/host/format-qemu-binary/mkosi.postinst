@@ -1,0 +1,32 @@
+#!/bin/bash
+# Script to create a symbolic link for qemu-system-x86_64 file path if it doens't exist on OS distribution.
+
+set -euo pipefail
+
+declare -A qemu_paths
+qemu_paths=(
+	     ["centos"]="/usr/libexec/qemu-kvm"
+	     ["rocky"]="/usr/libexec/qemu-kvm"
+           )
+
+qemu_path_found=""
+qemu_system_x86_64_path=/usr/bin/qemu-system-x86_64
+
+os_name=$(grep '^ID=' /buildroot/etc/os-release | cut -d'=' -f2 | tr -d '"')
+
+case "$os_name" in
+  centos)
+    qemu_path_found=${qemu_paths["centos"]}
+    ;;
+  rocky)
+    qemu_path_found=${qemu_paths["rocky"]}
+    ;;
+  *)
+    echo "OS '$os_name' does not require qemu path fixup, skipping."
+    exit 0
+    ;;
+esac
+
+mkosi-chroot \
+       ln -sf "${qemu_path_found}" "${qemu_system_x86_64_path}"
+

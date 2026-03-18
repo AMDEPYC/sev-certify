@@ -1,0 +1,15 @@
+# Target reached when all the other stages have completed.
+# Job services should use: WantedBy=stop.target
+
+[Unit]
+Description=Stop stage
+
+After=report.target
+Requires=report.target
+
+Wants=stop-done.service
+After=stop-done.service
+
+
+[Install]
+WantedBy=multi-user.target

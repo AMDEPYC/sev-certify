@@ -1,0 +1,20 @@
+#!/bin/bash
+set -xeu
+
+resolv_conf_link="https://raw.githubusercontent.com/systemd/systemd/refs/heads/main/src/resolve/resolv.conf"
+
+os_name=$(grep '^ID=' /buildroot/etc/os-release | cut -d'=' -f2 | tr -d '"')
+
+case "$os_name" in
+  rocky|centos)
+    ;;
+  *)
+    echo "Skipping resolv.conf update for $os_name"
+    exit 0
+    ;;
+esac
+
+mkdir -p "${DESTDIR}/etc"
+
+curl -fsSL -o "${DESTDIR}/etc/resolv.conf" \
+  "$resolv_conf_link"

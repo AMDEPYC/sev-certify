@@ -1,0 +1,7 @@
+# Target reached when all boot services are complete
+# Boot services should use: WantedBy=boot.target
+
+[Unit]
+Description=Boot Stage
+After=network-online.target systemd-journal-upload.service
+Requires=network-online.target systemd-journal-upload.service
