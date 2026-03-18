@@ -1,16 +1,12 @@
 [Unit]
 Description=Calculate guest measurement
 DefaultDependencies=no
-After=network-online.target
-Wants=network-online.target
+After=system.target
+Wants=system.target
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/lib/scripts/guest_measurement.sh
 StandardOutput=journal+console
 StandardError=journal+console
-ExecStartPost=/usr/bin/touch /run/calculate-measurement.ok
-LogExtraFields="SEV_VERSION=3.0-0" "SNPHOST_TEST=3.0-0"
-
-[Install]
-WantedBy=multi-user.target
+LogExtraFields="SEV_VERSION=3.0.0-0" "SNPHOST_TEST=3.0.0-0"

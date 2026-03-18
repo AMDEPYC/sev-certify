@@ -9,8 +9,4 @@ Type=oneshot
 ExecStart=/usr/local/lib/scripts/verify-guest.sh
 StandardOutput=journal+console
 StandardError=journal+console
-ExecStartPost=/usr/bin/touch /run/verify-guest.ok
-LogExtraFields="SEV_VERSION=3.0-0" "SNPHOST_TEST=3.0-0"
-
-[Install]
-WantedBy=multi-user.target
+LogExtraFields="SEV_VERSION=3.0.0-0" "SNPHOST_TEST=3.0.0-0"

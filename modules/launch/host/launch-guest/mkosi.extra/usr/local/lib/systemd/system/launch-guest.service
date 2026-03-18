@@ -1,0 +1,11 @@
+[Unit]
+Description=Launch a SNP enabled guest using qemu, the embeded guest image and the appropriate QEMU and OVMF, verify it launched.
+DefaultDependencies=no
+After=calculate-measurement.service
+Wants=calculate-measurement.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/scripts/launch-guest.sh
+StandardOutput=journal+console
+StandardError=journal+console

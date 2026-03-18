@@ -28,6 +28,8 @@ guest_measurement_sha256sum=$(echo "${calculated_measurement_hex}" | sha256sum |
 # Clean up the error trace before QEMU guest launch
 truncate -s 0 ${GUEST_ERROR_LOG}
 
+echo -e "\nSNP Guest boot is in progress ..."
+
 # Launch the SNP guest in background
 exec qemu-system-x86_64 \
   -enable-kvm \
@@ -41,5 +43,3 @@ exec qemu-system-x86_64 \
   -object sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1,kernel-hashes=on,host-data="${guest_measurement_sha256sum}" \
   -bios ${OVMF_PATH} \
   -kernel ${EFI_PATH} 2> ${GUEST_ERROR_LOG}
-
-echo -e "\nSNP Guest boot is in progress ..."

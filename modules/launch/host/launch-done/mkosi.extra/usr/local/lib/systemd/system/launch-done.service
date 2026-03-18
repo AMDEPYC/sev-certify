@@ -1,0 +1,14 @@
+[Unit]
+Description=Barrier that triggers the launch services
+DefaultDependencies=no
+
+Requires=calculate-measurement.service launch-guest.service verify-guest.service
+After=calculate-measurement.service launch-guest.service verify-guest.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=launch.target
