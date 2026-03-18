@@ -1,4 +1,0 @@
-enable systemd-journal-remote.socket
-enable systemd-journal-remote.service
-start systemd-journal-remote.socket
-start systemd-journal-remote.service

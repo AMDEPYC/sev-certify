@@ -1,0 +1,11 @@
+[Unit]
+Description=Run beacon boot in host
+DefaultDependencies=no
+After=boot.target
+Requires=boot.target
+
+[Service]
+Type=oneshot
+ExecStart=beacon boot
+StandardOutput=journal
+StandardError=journal

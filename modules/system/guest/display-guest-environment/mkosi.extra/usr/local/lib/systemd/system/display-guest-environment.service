@@ -1,0 +1,13 @@
+[Unit]
+Description=Show SNP Guest Environment Information for SEV Version 3.0.0-0 Report
+DefaultDependencies=no
+After=systemd-hostnamed.service boot-succesful
+Wants=boot-succesful
+Requires=systemd-hostnamed.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /usr/local/lib/scripts/guest_environment.sh
+StandardOutput=journal+console
+StandardError=journal+console
+LogExtraFields="GUEST_ENVIRONMENT=3.0.0-0"

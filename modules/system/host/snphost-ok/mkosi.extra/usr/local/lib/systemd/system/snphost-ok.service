@@ -1,0 +1,12 @@
+[Unit]
+Description=Run snphost ok to  make sure host is correctly set-up for SNP functionalities.
+DefaultDependencies=no
+After=boot.target
+Requires=boot.target
+
+[Service]
+Type=oneshot
+ExecStart=snphost ok
+StandardOutput=journal+console
+StandardError=journal+console
+LogExtraFields="SEV_VERSION=3.0.0-0" "SNPHOST_TEST=3.0.0-0"

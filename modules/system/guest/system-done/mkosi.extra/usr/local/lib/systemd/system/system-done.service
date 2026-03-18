@@ -1,0 +1,14 @@
+[Unit]
+Description=Barrier that triggers the system services
+DefaultDependencies=no
+
+Requires=boot-successful.service snpguest-ok.service display-guest-environment.service
+After=boot-successful.service snpguest-ok.service display-guest-environment.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=system.target

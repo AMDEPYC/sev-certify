@@ -1,0 +1,36 @@
+[Unit]
+Description=Enable systemd journal remote to listen for guest logs
+Requires=systemd-journal-remote.socket
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-journal-remote --listen-http=-3 --output=/var/log/journal/guest-logs/
+LockPersonality=yes
+LogsDirectory=journal/guest-logs/
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectProc=invisible
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+User=systemd-journal-remote
+
+
+# If there are many split up journal files we need a lot of fds to access them
+# all in parallel.
+LimitNOFILE=524288
+
+[Install]
+Also=systemd-journal-remote.socket

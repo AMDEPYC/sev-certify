@@ -1,0 +1,14 @@
+[Unit]
+Description=Barrier that triggers the system services
+DefaultDependencies=no
+
+Requires=beacon-boot.service snphost-ok.service systemd-journal-remote.socket systemd-journal-remote.service
+After=beacon-boot.service snphost-ok.service systemd-journal-remote.socket systemd-journal-remote.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=system.target

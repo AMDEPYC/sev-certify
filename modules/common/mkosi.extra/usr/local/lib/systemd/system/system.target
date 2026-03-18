@@ -1,0 +1,11 @@
+# Target reached when the system checks have completed.
+# Job services should use: WantedBy=system.target
+
+[Unit]
+Description=System stage
+
+After=boot.target
+Requires=boot.target
+
+Wants=system-done.service
+After=system-done.service
