@@ -1,0 +1,11 @@
+[Unit]
+Description=Announce that the guest finished running it's tests
+DefaultDependencies=no
+After=test.target
+Wants=test.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/echo "Guest Tests Completed"
+StandardOutput=journal+console
+StandardError=journal+console

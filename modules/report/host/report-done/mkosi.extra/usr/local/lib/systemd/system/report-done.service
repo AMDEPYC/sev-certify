@@ -1,0 +1,14 @@
+[Unit]
+Description=Barrier that triggers report services
+DefaultDependencies=no
+
+Requires=display-guest-logs.service sev-certificate-generator.service
+After=display-guest-logs.service sev-certificate-generator.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=report.target

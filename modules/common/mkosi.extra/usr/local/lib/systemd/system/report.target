@@ -2,6 +2,10 @@
 # Reporting services should use: WantedBy=report.target
 
 [Unit]
-Description=Report
-After=exec.target
-Wants=exec.target
+Description=Report Stage
+
+After=test.target
+Requires=test.target
+
+Wants=report-done.service
+After=report-done.service

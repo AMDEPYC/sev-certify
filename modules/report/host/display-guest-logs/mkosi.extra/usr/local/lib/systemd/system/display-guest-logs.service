@@ -1,0 +1,12 @@
+[Unit]
+Description=Show the guest logs for the appropriate services in the host
+DefaultDependencies=no
+Requires=systemd-journal-remote.service test.target
+After=test.target systemd-journal-remote.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/scripts/display-guest-logs.sh
+StandardOutput=journal+console
+StandardError=journal+console
+LogExtraFields="SEV_VERSION=3.0.0-0" "SNPHOST_TEST=3.0.0-0"
