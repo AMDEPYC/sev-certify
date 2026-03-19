@@ -100,9 +100,9 @@ jobs:
           SNPHOST_TAG=$(gh release view --repo virtee/snphost --json tagName --jq '.tagName')
           
           # Inject environment variables into mkosi.conf files
-          sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/snpguest-build/mkosi.conf
-          sed -i "/^\[Build\]/a\Environment=BEACON_TAG=$BEACON_TAG" modules/beacon/mkosi.conf
-          sed -i "/^\[Build\]/a\Environment=SNPHOST_TAG=$SNPHOST_TAG" modules/snphost/mkosi.conf
+          sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/build/common/snpguest/mkosi.conf
+          sed -i "/^\[Build\]/a\Environment=BEACON_TAG=$BEACON_TAG" modules/build/host/beacon/mkosi.conf
+          sed -i "/^\[Build\]/a\Environment=SNPHOST_TAG=$SNPHOST_TAG" modules/build/host/snphost/mkosi.conf
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
         run: |
