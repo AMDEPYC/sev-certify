@@ -6,6 +6,7 @@ wants=boot-succesful.service
 
 [Service]
 Type=oneshot
+ExecStartPre=/sbin/modprobe msr
 ExecStart=snpguest ok
 StandardOutput=journal+console
 StandardError=journal+console

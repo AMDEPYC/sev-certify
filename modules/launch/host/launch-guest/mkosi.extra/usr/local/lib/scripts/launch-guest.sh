@@ -5,7 +5,7 @@ set -euo pipefail
 EFI_PATH="/usr/local/lib/guest-image/guest.efi"
 MEASUREMENT_FILE="/usr/local/lib/guest-image/guest_measurement.txt"
 GUEST_ERROR_LOG="/tmp/guest-error.log"
-
+GUEST_BOOT_LOG="/tmp/guest_boot.log"
 # Check which OVMF binary to use
 OVMF_PATH=""
 for path in /usr/share/ovmf/OVMF.amdsev.fd /usr/share/edk2/ovmf/OVMF.amdsev.fd; do
@@ -35,11 +35,14 @@ exec qemu-system-x86_64 \
   -enable-kvm \
   -machine q35 \
   -cpu EPYC-v4 \
-  -machine memory-encryption=sev0 \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
   -monitor none \
   -display none \
+  -machine memory-encryption=sev0 \
   -object memory-backend-memfd,id=ram1,size=2048M \
   -machine memory-backend=ram1 \
   -object sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1,kernel-hashes=on,host-data="${guest_measurement_sha256sum}" \
   -bios ${OVMF_PATH} \
+  -serial file:${GUEST_BOOT_LOG} \
   -kernel ${EFI_PATH} 2> ${GUEST_ERROR_LOG}
