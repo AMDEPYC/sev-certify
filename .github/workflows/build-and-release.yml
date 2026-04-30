@@ -77,6 +77,8 @@ jobs:
             release: forky
           - distro: ubuntu
             release: "25.10"
+          - distro: ubuntu
+            release: "26.04"
 
     steps:
       - name: Checkout
