@@ -2,8 +2,8 @@
 Description=Barrier that triggers test services
 DefaultDependencies=no
 
-Requires=attestation-result.service attestation-workflow.service
-After=attestation-result.service attestation-workflow.service
+Requires=attestation-result.service attestation-workflow.service key-derivation.service
+After=attestation-result.service attestation-workflow.service key-derivation.service
 
 [Service]
 Type=oneshot

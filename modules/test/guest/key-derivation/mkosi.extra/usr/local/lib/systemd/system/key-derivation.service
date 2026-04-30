@@ -1,0 +1,18 @@
+[Unit]
+Description=Run SNP Key Derivation Tests after boot
+DefaultDependencies=no
+After=system.target
+
+# Putting the key derivation test, which should never fail, first
+# avoids the effect of other guest test services that fail. Doing 
+# it this way localizes the change. Other guest test services may "fail"
+# due to old PSP FW, microcode, etc.
+Before=attestation-workflow.service
+Wants=system.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/scripts/snpguest_key_derivation.py
+StandardOutput=journal+console
+StandardError=journal+console
+LogExtraFields="SEV_VERSION=3.0.0-0" "SNPGUEST_TEST=3.0.0-0"
