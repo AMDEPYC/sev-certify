@@ -1,8 +1,8 @@
 # Terminology
 
 "Targets" (.target files) define/establish "stages", for example, boot, test and report stages.<br>
-"Barrier services" are closely related to targets, but allow targets to be decoupled from stage details. "Barriers" and "barrier services" used interchangeably.<br>
-"Worker services" are services that we create, the .service file and the service code. "Workers" and "worker services" used interchangeably.<br>
+"Barrier services" are closely related to targets, but allow targets to be decoupled from stage details. "Barriers" and "barrier services" are used interchangeably.<br>
+"Worker services" are services that we create, the .service file and the service code. "Workers" and "worker services" are used interchangeably.<br>
 
 # Overview
 
