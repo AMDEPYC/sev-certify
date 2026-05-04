@@ -41,6 +41,8 @@ Each barrier service Requires= and After= all of its worker services. A barrier 
 Requires=display-guest-logs.service sev-certificate-generator.service<br>
 After=display-guest-logs.service sev-certificate-generator.service<br>
 
+This "synchronization process" alone doesn't work for non-oneshot systemd services. See Intra-stage ordering below for how to handle this, basically, have two or more workers together "go outside" systemd for synchronization in order to ensure that everything can stay in sync.
+
 # Intra-stage ordering
 
 In cases where intra-stage ordering is required, worker services use After= to achieve it. This works for oneshot services. For non-oneshot, either<br>
