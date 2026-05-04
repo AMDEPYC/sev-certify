@@ -12,7 +12,7 @@ Activation of a systemd unit happens via
 
 - systemctl start (or restart)<br>
 - Wants/Requires<br>
-- WantedBy/RequiredBy plus enabling via enable directive .preset file or systemctl enable<br>
+- WantedBy/RequiredBy plus enabling via enable directive in .preset file or systemctl enable<br>
 
 For sev-certify, somehow automating systemctl start versus one of the other activation methods doesn't make sense. Also, the "directions" of Wants/Requires and WantedBy/RequiredBy are opposite and it may only be appropriate/correct to change "one side". For example, it's inappropriate to change multi-user.target to have Wants/Requires=`<`one or more sev-certify units`>`. WantedBy/RequiredBy "enrolls" a unit and this plus enabling is one way to activate.<br>
 
@@ -40,6 +40,8 @@ Each barrier service Requires= and After= all of its worker services. A barrier 
 
 Requires=display-guest-logs.service sev-certificate-generator.service<br>
 After=display-guest-logs.service sev-certificate-generator.service<br>
+
+This "synchronization process" alone doesn't work for non-oneshot systemd services. See Intra-stage ordering below for how to handle this, basically, have two or more workers together "go outside" systemd for synchronization in order to ensure that everything can stay in sync.
 
 # Intra-stage ordering
 
