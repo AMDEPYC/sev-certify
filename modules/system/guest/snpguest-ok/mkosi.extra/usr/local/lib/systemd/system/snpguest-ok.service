@@ -1,8 +1,8 @@
 [Unit]
-Description=Run snguest ok to verify SNP enablement on guest
+Description=Run snpguest ok to verify SNP enablement on guest
 DefaultDependencies=no
-After=boot-succesful.service
-wants=boot-succesful.service
+After=boot-successful.service systemd-modules-load.service
+Wants=boot-successful.service systemd-modules-load.service
 
 [Service]
 Type=oneshot
