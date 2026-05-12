@@ -2,6 +2,12 @@
 Description=Run SNP Key Derivation Tests after boot
 DefaultDependencies=no
 After=system.target
+
+# Putting the key derivation test, which should never fail, first
+# avoids the effect of other guest test services that fail. Doing 
+# it this way localizes the change. Other guest test services may fail,
+# effectively, due to old PSP FW, microcode, etc.
+Before=attestation-workflow.service
 Wants=system.target
 
 [Service]
