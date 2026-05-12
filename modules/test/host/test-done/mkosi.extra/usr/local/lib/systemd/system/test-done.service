@@ -2,6 +2,9 @@
 Description=Barrier that triggers test services
 DefaultDependencies=no
 
+Wants=snphost-config-commit.service
+After=snphost-config-commit.service
+
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/true

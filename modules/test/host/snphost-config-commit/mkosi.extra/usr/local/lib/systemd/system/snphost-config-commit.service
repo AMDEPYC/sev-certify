@@ -1,0 +1,12 @@
+[Unit]
+Description=Test snphost config and commit commands
+DefaultDependencies=no
+After=launch.target snphost-ok.service
+Requires=launch.target snphost-ok.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/scripts/snphost_config_commit.sh
+StandardOutput=journal+console
+StandardError=journal+console
+LogExtraFields="SEV_VERSION=3.0.0-1" "SEV_TEST_GROUP=snphost-config-commit"
