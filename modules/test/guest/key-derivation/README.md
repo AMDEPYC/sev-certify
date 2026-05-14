@@ -8,7 +8,7 @@ The test suite validates the following key derivation properties:
 
 1. **Determinism**: Same parameters produce the same key
 2. **VMPL Isolation**: Different VMPL values produce different keys (cryptographic isolation)
-3. **Root Key Difference**: VCK and VMRK produce different keys
+3. **Root Key Difference**: VCEK and VMRK root key selections produce different keys
 4. **Guest SVN Sensitivity**: Different guest SVN values produce different keys
 5. **TCB Sensitivity**: Different TCB versions produce different keys
 6. **Guest Field Select Sensitivity**: Different guest field select values produce different keys
@@ -27,10 +27,21 @@ This prevents privilege escalation where compromised guest OS at VMPL1 attempts 
 ### Root Key Selection
 
 Tests validate that different root keys produce different derived keys:
-- **VCK (Versioned Chip Key)**: Symmetric key derived from CEK+TCB
-- **VMRK (VM Root Key)**: VM-specific symmetric key for migration scenarios
+- **VCEK (Versioned Chip Endorsement Key)**: Selected via `RootKeySelect=0` in `SNP_DERIVE_KEY`
+- **VMRK (VM Root Key)**: VM-specific key for migration scenarios; selected via `RootKeySelect=1`
 
-Note: Despite the name "vcek" in the CLI, the root key selection uses **VCK** (symmetric), not VCEK (asymmetric signing key).
+AMD uses the name VCEK for two distinct roles: the asymmetric key that signs attestation reports,
+and as the name for `RootKeySelect=0` in `SNP_DERIVE_KEY`. These are different uses of the same
+underlying key material. The `snpguest` CLI follows AMD's naming directly.
+
+The output of `SNP_DERIVE_KEY` is a symmetric secret returned to the guest. Whether to call it
+a "key" or a "seed" is somewhat in the eye of the beholder: the firmware does not use it
+internally for encryption, decryption, or authentication — it is simply derived and handed to
+the guest, which then uses it as a key for its own purposes. AMD and `snpguest` call it a derived
+key, reflecting its intended use.
+
+VMRK is used in live migration to protect VM state across hosts, meaning the firmware may use it
+internally for encryption or authentication — which places it more firmly in the "key" category.
 
 ## Test Architecture
 
@@ -61,8 +72,14 @@ The tests can only run inside an SNP-enabled guest VM with:
 The tests run automatically via systemd service after boot. Manual execution:
 
 ```bash
-# Run the test suite
+# Run the test suite (pass/fail output only)
 /usr/local/lib/scripts/snpguest_key_derivation.py
+
+# Run with verbose output (snpguest commands, key hex values, full attestation report)
+/usr/local/lib/scripts/snpguest_key_derivation.py --debug
+
+# Derive a key for every valid GFS value (0x00-0x7f) and report which produce distinct keys
+/usr/local/lib/scripts/snpguest_key_derivation.py --gfs-sweep
 
 # View test results
 journalctl -u key-derivation.service
@@ -76,31 +93,55 @@ cat /usr/local/lib/key_derivation_status
 Each test produces:
 - Status log in JSON format: `/usr/local/lib/key_derivation_status`
 - Derived keys stored in: `/usr/local/lib/key_derivation_service/`
-- Console output with pass/fail status and key values
+- Console output with pass/fail status (key hex values shown only with `--debug`)
 
 ### Expected Output
 
-Successful test run:
+What follows is an example of a successful test run (default, no `--debug`):
 
 ```
 ======================================================================
-SNP Guest Key Derivation Test Suite
+ATTESTATION REPORT (reference values for key derivation bounds)
 ======================================================================
+  Guest SVN:     1 (upper bound for --guest_svn)
+  Current  TCB:  bl=0x07 tee=0x00 snp=0x0b mc=0x16
+  Committed TCB: bl=0x07 tee=0x00 snp=0x0b mc=0x16 (upper bound per component for --tcb_version)
+  Reported TCB:  bl=0x07 tee=0x00 snp=0x0b mc=0x16
+  Launch TCB:    bl=0x07 tee=0x00 snp=0x0b mc=0x16
 
 ======================================================================
-TEST: Key Derivation Determinism
+TEST: Determinism
 ======================================================================
 ✓ PASS: Keys match (deterministic)
-  Key: 0x<hex>
 
 ======================================================================
-TEST: VMPL-Based Key Isolation
+TEST: VMPL Isolation
 ======================================================================
 ✓ PASS: VMPL0 and VMPL1 keys differ (proper isolation)
-  VMPL0 Key: 0x<hex>
-  VMPL1 Key: 0x<hex>
 
-...
+======================================================================
+TEST: Root Key Difference
+======================================================================
+✓ PASS: VCEK and VMRK keys differ
+
+======================================================================
+TEST: Guest SVN Sensitivity
+======================================================================
+  Guest SVN upper bound: 1
+  Testing 2 SVN values: [0, 1]
+✓ PASS: All 2 SVN values produce distinct keys
+
+======================================================================
+TEST: TCB Sensitivity
+======================================================================
+  Committed TCB (upper bound per component): bl=0x07 tee=0x00 snp=0x0b mc=0x16
+  Testing 5 TCB candidate(s)
+✓ PASS: All 5 TCB values produce distinct keys
+
+======================================================================
+TEST: Guest Field Select Sensitivity
+======================================================================
+✓ PASS: GFS=0x01 and GFS=0x02 keys differ
 
 ======================================================================
 TEST SUMMARY
@@ -117,6 +158,14 @@ Passed: 6/6
 ✓ All key derivation tests passed!
 ```
 
+### N/A Cases
+
+Some tests may report `✓ PASS: N/A` rather than a full result:
+
+- **Guest SVN Sensitivity**: Reports N/A when the guest was launched without an ID block (`guest_svn=0` in the attestation report), or with an ID block that explicitly sets the Guest SVN value to zero. Either way, it leaves  only one valid SVN value to test.
+- **TCB Sensitivity**: Reports N/A when all committed TCB components are zero.
+- **VMPL Isolation**: Reports N/A when VMPL1 key derivation fails (expected if not running at VMPL0 or VMPL1).
+
 ## Implementation Notes
 
 ### Python vs Bash
@@ -127,28 +176,15 @@ Unlike the attestation tests which use bash, this module uses Python for:
 - Easier maintenance and extension
 - Native JSON handling for status logs
 
+### Attestation Report at Startup
+
+Before running tests, the script fetches an attestation report to extract the guest SVN and committed TCB values. These provide the valid upper bounds for the SVN sensitivity and TCB sensitivity tests respectively, avoiding firmware rejections from out-of-range parameter values.
+
 ### VMPL Constraints
 
 The VMPL isolation test may produce warnings if running at VMPL > 0, as the firmware enforces that derived keys can only be requested for VMPL values ≥ current VMPL. This is expected behavior and validates the security constraint.
 
-### Key Display
+### Key Reading
 
-The tests use `snpguest display key` to read derived keys as hex strings for comparison. This avoids binary file comparison issues and provides human-readable output.
+Derived keys are read directly from the output file bytes (`.read_bytes().hex()`). Key hex values are only printed when `--debug` is active.
 
-## Integration with sev-certify
-
-To include key-derivation tests in the guest build, update the parent `mkosi.conf`:
-
-```conf
-[Include]
-Include=./attestation-result
-Include=./attestation-workflow
-Include=./key-derivation        # Add this line
-Include=./test-done
-```
-
-## References
-
-- [CLAUDE.md](../../../../../CLAUDE.md) - VCK/VCEK naming clarification
-- [SEV-SNP-ARCHITECTURE.md](../../../../../SEV-SNP-ARCHITECTURE.md) - VMPL isolation details
-- [snpguest documentation](https://github.com/virtee/snpguest) - Key derivation API
