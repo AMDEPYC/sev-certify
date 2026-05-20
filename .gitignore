@@ -5,3 +5,11 @@
 /*/image.raw
 /*/image.initrd
 /*/image.vmlinuz
+
+# mkosi build outputs (named after --image-id)
+images/*/tools/
+images/*/*.efi
+images/*/*.initrd
+images/*/*.vmlinuz
+images/*/guest-*
+images/*/host-*
