@@ -2,8 +2,8 @@
 Description=Barrier that triggers the launch services
 DefaultDependencies=no
 
-Requires=calculate-measurement.service launch-guest.service verify-guest.service
-After=calculate-measurement.service launch-guest.service verify-guest.service
+Requires=calculate-measurement.service generate-id-block.service launch-guest.service verify-guest.service
+After=calculate-measurement.service generate-id-block.service launch-guest.service verify-guest.service
 
 [Service]
 Type=oneshot

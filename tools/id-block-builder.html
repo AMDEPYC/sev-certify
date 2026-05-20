@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SEV-SNP ID Block Builder</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: monospace; max-width: 860px; margin: 2em auto; padding: 0 1.5em; background: #1a1a1a; color: #e0e0e0; }
+h1 { color: #fff; margin-bottom: .2em; }
+h2 { color: #aaa; border-bottom: 1px solid #444; padding-bottom: .3em; margin-top: 2em; }
+p.desc { color: #888; font-size: .85em; margin: .3em 0 1em; }
+label { display: block; margin-top: .8em; color: #ccc; font-size: .88em; }
+input[type=text], input[type=number], textarea {
+  width: 100%; padding: .4em .5em; background: #252525; color: #e0e0e0;
+  border: 1px solid #555; font-family: monospace; font-size: .88em; margin-top: .2em;
+}
+input[type=text][readonly], input[type=number][readonly], textarea[readonly] {
+  background: #1e1e1e; color: #888; border-color: #3a3a3a;
+}
+.row { display: flex; gap: 1em; }
+.row > * { flex: 1; }
+button {
+  margin-top: .8em; padding: .55em 1.1em; background: #2e2e2e; color: #ddd;
+  border: 1px solid #555; cursor: pointer; font-family: monospace; font-size: .9em;
+}
+button:hover { background: #3a3a3a; }
+button.primary { background: #1a3d1a; border-color: #2a6a2a; color: #8f8; }
+button.primary:hover { background: #224422; }
+.hint { color: #777; font-size: .8em; margin-top: .25em; }
+.warn { color: #ca5; font-size: .8em; margin-top: .25em; display: none; }
+.log {
+  margin-top: 1em; background: #111; padding: .8em 1em; border: 1px solid #333;
+  white-space: pre-wrap; font-size: .82em; min-height: 3em; color: #999; max-height: 14em; overflow-y: auto;
+}
+.log .ok  { color: #6c6; }
+.log .err { color: #c66; }
+fieldset { border: 1px solid #3a3a3a; padding: .8em 1em; margin-top: 1em; }
+legend { color: #999; padding: 0 .4em; font-size: .9em; }
+.downloads { display: none; margin-top: 1em; }
+.output-box {
+  background: #111; border: 1px solid #3a3a3a; padding: .6em .8em;
+  font-size: .82em; word-break: break-all; color: #8c8; margin-top: .4em; min-height: 2em;
+}
+.ref-table {
+  width: 100%; border-collapse: collapse; font-size: .82em; margin-top: .6em;
+}
+.ref-table th { text-align: left; color: #999; border-bottom: 1px solid #444; padding: .3em .5em; }
+.ref-table td { padding: .25em .5em; border-bottom: 1px solid #2a2a2a; }
+.ref-table .verified { color: #6c6; }
+.ref-table .ambiguous { color: #ca5; }
+.ref-table .unknown { color: #888; }
+.ref-note { color: #666; font-size: .78em; margin-top: .6em; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>SEV-SNP ID Block Builder</h1>
+<p class="desc">
+  Builds an ID block for SEV-SNP guest launch. The ID block
+  contains guest policy, metadata (family_id, image_id, guest_svn), and a
+  placeholder launch digest. Calculating launch digests, ID block signing and
+  ID auth info structure are out of scope of this simple tool.
+</p>
+
+<!-- ID Block -->
+<h2>ID Block</h2>
+
+<label>Launch Digest (48 bytes, hex)</label>
+<input type="text" id="launch_digest"
+  value="000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  placeholder="96 hex chars">
+<div class="hint">All zeros (invalid) &mdash; must be fixed up/patched with the actual guest measurement before use,
+  either here or, more likely, in this tool's output.</div>
+
+<div class="row" style="margin-top:.6em">
+  <div>
+    <label>Family ID (16 bytes, hex)</label>
+    <input type="text" id="family_id" value="00000000000000000000000000000000" placeholder="32 hex chars">
+  </div>
+  <div>
+    <label>Image ID (16 bytes, hex)</label>
+    <input type="text" id="image_id" value="00000000000000000000000000000000" placeholder="32 hex chars">
+  </div>
+</div>
+
+<div class="row" style="margin-top:.6em">
+  <div>
+    <label>Guest SVN (4 bytes, decimal)</label>
+    <input type="number" id="guest_svn" value="1" min="0" max="4294967295">
+    <div class="hint">Upper bound for <code>--guest_svn</code> in key derivation.</div>
+  </div>
+  <div>
+    <label>Version (fixed at 1)</label>
+    <input type="text" value="1" readonly>
+    <div class="hint">ID block structure version per SEV-SNP ABI.</div>
+  </div>
+</div>
+
+<!-- Guest Policy (part of ID block) -->
+<fieldset style="margin-top:1.2em">
+<legend>Guest Policy (ID block offset 0x58)</legend>
+<p class="desc" style="margin-top:.3em">
+  8 bytes. Byte 0 (lowest address) is ABI minor, byte 1 is ABI major,
+  bytes 2&ndash;7 are policy flags. Written to memory as a 64-bit little-endian unsigned integer.
+</p>
+
+<fieldset>
+  <legend>ABI Version (bits 15:0)</legend>
+  <div class="row">
+    <div>
+      <label>ABI Minor (bits 7:0)</label>
+      <input type="number" id="abi_minor" value="0" min="0" max="255">
+    </div>
+    <div>
+      <label>ABI Major (bits 15:8)</label>
+      <input type="number" id="abi_major" value="0" min="0" max="255">
+    </div>
+  </div>
+  <div class="hint">
+    Minimum SEV-SNP firmware ABI version required for guest launch. The firmware
+    rejects the launch if its version is below this value (fw_error=7). Setting
+    major=0 minor=0 accepts any firmware version. Test platform: API 1.54.
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>Policy Flags (bits 63:16)</legend>
+  <label>Raw flags (hex, 48 bits)</label>
+  <input type="text" id="policy_flags" value="00000000000b" placeholder="12 hex digits">
+  <div class="hint">
+    Bits 63:16 of the policy. Default <code>00000000000b</code> = the most permissive
+    value possible based on applicable (ABI version) AMD documentation, on configuration of
+    one compliant test system and on behavior of the SW on this system, between the test SW
+    and the SNP FW (eg, KVM). This SW can and in some cases does block certain values from
+    making it to the FW.<br>
+    
+    Enter as big-endian hex: leftmost digit is bits 63:60.
+  </div>
+  <div class="warn" id="mbo_warn">Bit 17 (MBO) is cleared &mdash; KVM will reject with EINVAL.</div>
+  <div class="warn" id="reserved_warn">Reserved bits set (18 or 21-63) &mdash; KVM will reject with EINVAL.</div>
+</fieldset>
+
+<label>Computed Policy (u64 hex, read-only)</label>
+<input type="text" id="policy_computed" readonly>
+<div class="hint">Full 64-bit policy = (flags &lt;&lt; 16) | (abi_major &lt;&lt; 8) | abi_minor.</div>
+
+<!-- Policy Bit Reference -->
+<fieldset>
+  <legend>Policy Bit Reference (verified against ABI 1.54)</legend>
+  <table class="ref-table">
+    <tr><th>Bit(s)</th><th>Label</th><th>Polarity</th><th>Notes</th></tr>
+    <tr><td>16</td><td>SMT_ALLOWED</td><td>permissive</td>
+        <td>Had to be 1 on test HW since SMT was on; firmware rejects (fw_error=7)</td></tr>
+    <tr><td>17</td><td>MBO</td><td>&mdash;</td>
+        <td>Must-be-one; structural requirement for SNP</td></tr>
+    <tr><td>18</td><td>RESERVED</td><td>&mdash;</td>
+        <td>KVM rejects unconditionally (EINVAL)</td></tr>
+    <tr><td>19</td><td>DEBUG</td><td>permissive</td>
+        </tr>
+    <tr><td>20</td><td>SINGLE_SOCKET</td><td>restrictive</td>
+        <td>Had to be 0 on test HW since 2-socket system &rarr; fails when set (fw_error=7)</td></tr>
+    <tr><td>21&ndash;63</td><td>RESERVED</td><td>&mdash;</td>
+        <td>KVM rejects unconditionally (EINVAL); 127 oracle tests</td></tr>
+  </table>
+  <p class="ref-note">
+    Guest Policy and ID Block field definitions are documented in the SEV-SNP ABI
+    specification; bit assignments may change in future ABI versions.<br>
+    Test HW: AMD EPYC 9654 (Genoa), 2 sockets, SMT on, RAPL disabled, no CXL devices,
+    TSME enabled, API 1.54 build 6. 127 oracle tests performed.
+  </p>
+</fieldset>
+
+</fieldset><!-- end Guest Policy -->
+
+<!-- Build -->
+<h2>Build</h2>
+<button class="primary" onclick="build()">Build ID Block Template</button>
+
+<div class="log" id="log">Ready.</div>
+
+<div class="downloads" id="downloads">
+  <h2 style="margin-top:1.4em">Output</h2>
+  <p class="desc">Unsigned template. Signing and ID auth generation happen at runtime.</p>
+
+  <label>id-block.b64 (base64)</label>
+  <div class="output-box" id="out_id_block"></div>
+
+  <div style="margin-top:.8em">
+    <button onclick="dl(idBlockB64,  'id-block.b64','text/plain')">Download id-block.b64</button>
+    <button onclick="dl(idBlockBytes,'id-block.bin','application/octet-stream')">Download id-block.bin</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const el = n => document.getElementById(n);
+const clamp = (n, lo, hi) => Math.min(Math.max(parseInt(el(n).value,10)||0, lo), hi);
+
+function fromHex(h) {
+    if (h.length % 2) throw new Error('Odd-length hex string');
+    return new Uint8Array(h.match(/.{2}/g).map(b => parseInt(b,16)));
+}
+const toB64 = u8 => btoa(Array.from(u8, b => String.fromCharCode(b)).join(''));
+
+// ── Logging ───────────────────────────────────────────────────────────────
+
+function clearLog() { el('log').innerHTML = ''; }
+function log(msg, isErr=false, isOk=false) {
+    const e = el('log'), s = document.createElement('span');
+    s.className = isErr ? 'err' : isOk ? 'ok' : '';
+    s.textContent = msg + '\n';
+    if (e.textContent.trim() === 'Ready.') e.textContent = '';
+    e.appendChild(s);
+    e.scrollTop = e.scrollHeight;
+}
+
+let idBlockB64 = null, idBlockBytes = null;
+
+// ── Policy ────────────────────────────────────────────────────────────────
+
+function parseFlags() {
+    const raw = el('policy_flags').value.replace(/\s/g, '');
+    if (!/^[0-9a-fA-F]{1,12}$/.test(raw)) return 0n;
+    return BigInt('0x' + raw);
+}
+
+function computePolicy() {
+    const flags = parseFlags();
+    const minor = BigInt(clamp('abi_minor', 0, 255));
+    const major = BigInt(clamp('abi_major', 0, 255));
+    return (flags << 16n) | (major << 8n) | minor;
+}
+
+function updatePolicy() {
+    const flags = parseFlags();
+    const policy = computePolicy();
+    el('policy_computed').value = '0x' + policy.toString(16).padStart(16, '0');
+
+    // MBO warning (bit 17 = bit 1 of the flags field)
+    el('mbo_warn').style.display = (flags & 2n) === 0n ? 'block' : 'none';
+
+    // Reserved bits warning: bit 18 (flags bit 2) or bits 21-63 (flags bits 5-47)
+    const reservedMask = 0xFFFFFFFFFFE4n; // flags bit 2 + flags bits 5-47
+    el('reserved_warn').style.display = (flags & reservedMask) !== 0n ? 'block' : 'none';
+}
+
+['abi_minor', 'abi_major', 'policy_flags'].forEach(n => {
+    el(n).addEventListener('change', updatePolicy);
+    el(n).addEventListener('input', updatePolicy);
+});
+updatePolicy();
+
+// ── Build ─────────────────────────────────────────────────────────────────
+
+function buildIdBlock(ld, familyId, imageId, guestSvn, policy) {
+    const buf = new ArrayBuffer(96);
+    const v = new DataView(buf), u = new Uint8Array(buf);
+    u.set(ld, 0);
+    u.set(familyId, 48);
+    u.set(imageId, 64);
+    v.setUint32(80, 1, true);         // version = 1
+    v.setUint32(84, guestSvn, true);
+    v.setBigUint64(88, policy, true);
+    return u;
+}
+
+function build() {
+    clearLog();
+    el('downloads').style.display = 'none';
+    idBlockB64 = idBlockBytes = null;
+    try {
+        const ldHex  = el('launch_digest').value.replace(/\s/g, '');
+        const fIdHex = el('family_id').value.replace(/\s/g, '');
+        const iIdHex = el('image_id').value.replace(/\s/g, '');
+        if (ldHex.length  !== 96) throw new Error('Launch digest must be 96 hex chars (48 bytes).');
+        if (fIdHex.length !== 32) throw new Error('Family ID must be 32 hex chars (16 bytes).');
+        if (iIdHex.length !== 32) throw new Error('Image ID must be 32 hex chars (16 bytes).');
+
+        const guestSvn = parseInt(el('guest_svn').value, 10);
+        if (isNaN(guestSvn) || guestSvn < 0) throw new Error('Invalid guest SVN.');
+
+        const policy = computePolicy();
+        log('policy=0x' + policy.toString(16) + '  guest_svn=' + guestSvn);
+
+        const idBlock = buildIdBlock(
+            fromHex(ldHex), fromHex(fIdHex), fromHex(iIdHex), guestSvn, policy
+        );
+
+        idBlockBytes = idBlock;
+        idBlockB64   = toB64(idBlock);
+
+        el('out_id_block').textContent = idBlockB64;
+        el('downloads').style.display = 'block';
+        log('\u2713 id-block: ' + idBlock.length + ' bytes (unsigned template)', false, true);
+    } catch(e) {
+        log('Error: ' + e.message, true);
+    }
+}
+
+// ── Download ──────────────────────────────────────────────────────────────
+
+function dl(content, name, type) {
+    const url = URL.createObjectURL(new Blob([content], {type}));
+    Object.assign(document.createElement('a'), {href:url, download:name}).click();
+    URL.revokeObjectURL(url);
+}
+
+</script>
+</body>
+</html>
