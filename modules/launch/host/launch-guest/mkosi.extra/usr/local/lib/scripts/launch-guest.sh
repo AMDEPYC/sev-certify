@@ -49,8 +49,15 @@ if [ -f "${ID_BLOCK_FILE}" ] && [ -f "${ID_AUTH_FILE}" ]; then
     ID_AUTH_B64=$(cat "${ID_AUTH_FILE}")
     # Extract policy from id-block (bytes 88-95, LE u64) so LAUNCH_START and
     # LAUNCH_FINISH see the same value; without this QEMU uses its own default.
-    POLICY=$(base64 -d "${ID_BLOCK_FILE}" | python3 -c \
-        "import sys; d=sys.stdin.buffer.read(); print(hex(int.from_bytes(d[88:96],'little')))")
+    POLICY=$(base64 -d "${ID_BLOCK_FILE}" | python3 -c "
+        import sys
+        d = sys.stdin.buffer.read()
+        n = len(d)
+        if n != 96:
+            print(f'ERROR: id-block decoded to {n} bytes (expected 96)', file=sys.stderr)
+            sys.exit(1)
+        print(hex(int.from_bytes(d[88:96], 'little')))
+    ")
     SEV_SNP_OBJECT="${SEV_SNP_OBJECT},policy=${POLICY},id-block=${ID_BLOCK_B64},id-auth=${ID_AUTH_B64}"
     dbg "ID block: ${ID_BLOCK_FILE} (present)"
     dbg "ID auth:  ${ID_AUTH_FILE} (present)"
@@ -80,6 +87,8 @@ QEMU_CMD=(
     -object "${SEV_SNP_OBJECT}"
     -bios "${OVMF_PATH}"
     -kernel "${EFI_PATH}"
+    -netdev user,id=net0
+    -device virtio-net-pci,netdev=net0
 )
 
 # Append any extra QEMU options (word-split intentionally)

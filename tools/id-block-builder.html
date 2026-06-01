@@ -199,7 +199,8 @@ const clamp = (n, lo, hi) => Math.min(Math.max(parseInt(el(n).value,10)||0, lo),
 
 function fromHex(h) {
     if (h.length % 2) throw new Error('Odd-length hex string');
-    return new Uint8Array(h.match(/.{2}/g).map(b => parseInt(b,16)));
+    if (!/^(?:[0-9a-fA-F]{2})*$/.test(h)) throw new Error('Invalid hex string');
+    return new Uint8Array(h.length ? h.match(/.{2}/g).map(b => parseInt(b,16)) : []);
 }
 const toB64 = u8 => btoa(Array.from(u8, b => String.fromCharCode(b)).join(''));
 
@@ -221,7 +222,7 @@ let idBlockB64 = null, idBlockBytes = null;
 
 function parseFlags() {
     const raw = el('policy_flags').value.replace(/\s/g, '');
-    if (!/^[0-9a-fA-F]{1,12}$/.test(raw)) return 0n;
+    if (!/^[0-9a-fA-F]{1,12}$/.test(raw)) throw new Error('Invalid flags');
     return BigInt('0x' + raw);
 }
 
@@ -233,16 +234,24 @@ function computePolicy() {
 }
 
 function updatePolicy() {
-    const flags = parseFlags();
-    const policy = computePolicy();
-    el('policy_computed').value = '0x' + policy.toString(16).padStart(16, '0');
+    try {
+        const flags = parseFlags();
+        const minor = BigInt(clamp('abi_minor', 0, 255));
+        const major = BigInt(clamp('abi_major', 0, 255));
+        const policy = (flags << 16n) | (major << 8n) | minor;
+        el('policy_computed').value = '0x' + policy.toString(16).padStart(16, '0');
 
-    // MBO warning (bit 17 = bit 1 of the flags field)
-    el('mbo_warn').style.display = (flags & 2n) === 0n ? 'block' : 'none';
+        // MBO warning (bit 17 = bit 1 of the flags field)
+        el('mbo_warn').style.display = (flags & 2n) === 0n ? 'block' : 'none';
 
-    // Reserved bits warning: bit 18 (flags bit 2) or bits 21-63 (flags bits 5-47)
-    const reservedMask = 0xFFFFFFFFFFE4n; // flags bit 2 + flags bits 5-47
-    el('reserved_warn').style.display = (flags & reservedMask) !== 0n ? 'block' : 'none';
+        // Reserved bits warning: bit 18 (flags bit 2) or bits 21-63 (flags bits 5-47)
+        const reservedMask = 0xFFFFFFFFFFE4n; // flags bit 2 + flags bits 5-47
+        el('reserved_warn').style.display = (flags & reservedMask) !== 0n ? 'block' : 'none';
+    } catch (e) {
+        el('policy_computed').value = '(invalid)';
+        el('mbo_warn').style.display = 'none';
+        el('reserved_warn').style.display = 'none';
+    }
 }
 
 ['abi_minor', 'abi_major', 'policy_flags'].forEach(n => {
@@ -278,7 +287,9 @@ function build() {
         if (iIdHex.length !== 32) throw new Error('Image ID must be 32 hex chars (16 bytes).');
 
         const guestSvn = parseInt(el('guest_svn').value, 10);
-        if (isNaN(guestSvn) || guestSvn < 0) throw new Error('Invalid guest SVN.');
+        if (isNaN(guestSvn) || guestSvn < 0 || guestSvn > 4294967295) {
+             throw new Error('Invalid guest SVN. Must be between 0 and 4294967295.');
+        }
 
         const policy = computePolicy();
         log('policy=0x' + policy.toString(16) + '  guest_svn=' + guestSvn);
@@ -302,8 +313,13 @@ function build() {
 
 function dl(content, name, type) {
     const url = URL.createObjectURL(new Blob([content], {type}));
-    Object.assign(document.createElement('a'), {href:url, download:name}).click();
-    URL.revokeObjectURL(url);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 </script>

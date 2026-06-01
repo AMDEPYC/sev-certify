@@ -54,7 +54,7 @@ oracle tests were performed.
 
 The most permissive valid policy on the test platform is bits 16+17 set, all
 else clear. The tool defaults to this value (`00000000000b` in the 48-bit hex
-input, yielding full policy `0x000000000000b0000`).
+input, yielding full policy `0x00000000000b0000`).
 
 The tool warns if bit 17 (MBO) is cleared or if reserved bits are set.
 
