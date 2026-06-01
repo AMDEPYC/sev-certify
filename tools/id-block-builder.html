@@ -199,7 +199,8 @@ const clamp = (n, lo, hi) => Math.min(Math.max(parseInt(el(n).value,10)||0, lo),
 
 function fromHex(h) {
     if (h.length % 2) throw new Error('Odd-length hex string');
-    return new Uint8Array(h.match(/.{2}/g).map(b => parseInt(b,16)));
+    if (!/^(?:[0-9a-fA-F]{2})*$/.test(h)) throw new Error('Invalid hex string');
+    return new Uint8Array(h.length ? h.match(/.{2}/g).map(b => parseInt(b,16)) : []);
 }
 const toB64 = u8 => btoa(Array.from(u8, b => String.fromCharCode(b)).join(''));
 
@@ -221,7 +222,7 @@ let idBlockB64 = null, idBlockBytes = null;
 
 function parseFlags() {
     const raw = el('policy_flags').value.replace(/\s/g, '');
-    if (!/^[0-9a-fA-F]{1,12}$/.test(raw)) return 0n;
+    if (!/^[0-9a-fA-F]{1,12}$/.test(raw)) throw new Error('Invalid flags');
     return BigInt('0x' + raw);
 }
 
@@ -278,7 +279,9 @@ function build() {
         if (iIdHex.length !== 32) throw new Error('Image ID must be 32 hex chars (16 bytes).');
 
         const guestSvn = parseInt(el('guest_svn').value, 10);
-        if (isNaN(guestSvn) || guestSvn < 0) throw new Error('Invalid guest SVN.');
+        if (isNaN(guestSvn) || guestSvn < 0 || guestSvn > 4294967295) {
+             throw new Error('Invalid guest SVN. Must be between 0 and 4294967295.');
+        }
 
         const policy = computePolicy();
         log('policy=0x' + policy.toString(16) + '  guest_svn=' + guestSvn);

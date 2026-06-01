@@ -80,6 +80,8 @@ QEMU_CMD=(
     -object "${SEV_SNP_OBJECT}"
     -bios "${OVMF_PATH}"
     -kernel "${EFI_PATH}"
+    -netdev user,id=net0
+    -device virtio-net-pci,netdev=net0
 )
 
 # Append any extra QEMU options (word-split intentionally)

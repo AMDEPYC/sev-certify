@@ -58,7 +58,12 @@ jobs:
 
   build:
     name: ${{ matrix.distro }}-${{ matrix.release }}
+    # The build job depends on the release creation job, but only for the
+    # workflow_dispatch and push events. However, we want to run the build
+    # for all the events. Without the always() condition, the build job 
+    # would be skipped for pull_request events. 
     needs: create-release
+    if: ${{ always() && (github.event_name == 'pull_request' || needs.create-release.result == 'success') }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
