@@ -1,5 +1,5 @@
 [Unit]
-Description=Patch guest measurement into id-block.b64
+Description=Patch and sign id-block.b64, generating id-auth.b64
 DefaultDependencies=no
 After=calculate-measurement.service
 Wants=calculate-measurement.service

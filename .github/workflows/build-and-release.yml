@@ -63,7 +63,12 @@ jobs:
     # for all the events. Without the always() condition, the build job 
     # would be skipped for pull_request events. 
     needs: create-release
-    if: ${{ always() && (github.event_name == 'pull_request' || needs.create-release.result == 'success') }}
+    if: >-
+      ${{ always()
+      && (github.event_name == 'pull_request'
+        || (github.event_name == 'workflow_dispatch'
+            && github.event.inputs.replace_release != 'true')
+        || needs.create-release.result == 'success') }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
