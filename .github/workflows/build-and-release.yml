@@ -79,6 +79,8 @@ jobs:
             release: "25.10"
           - distro: ubuntu
             release: "26.04"
+          - distro: opensuse
+            release: "16.0"
 
     steps:
       - name: Checkout
