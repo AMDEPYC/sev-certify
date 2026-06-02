@@ -234,16 +234,24 @@ function computePolicy() {
 }
 
 function updatePolicy() {
-    const flags = parseFlags();
-    const policy = computePolicy();
-    el('policy_computed').value = '0x' + policy.toString(16).padStart(16, '0');
+    try {
+        const flags = parseFlags();
+        const minor = BigInt(clamp('abi_minor', 0, 255));
+        const major = BigInt(clamp('abi_major', 0, 255));
+        const policy = (flags << 16n) | (major << 8n) | minor;
+        el('policy_computed').value = '0x' + policy.toString(16).padStart(16, '0');
 
-    // MBO warning (bit 17 = bit 1 of the flags field)
-    el('mbo_warn').style.display = (flags & 2n) === 0n ? 'block' : 'none';
+        // MBO warning (bit 17 = bit 1 of the flags field)
+        el('mbo_warn').style.display = (flags & 2n) === 0n ? 'block' : 'none';
 
-    // Reserved bits warning: bit 18 (flags bit 2) or bits 21-63 (flags bits 5-47)
-    const reservedMask = 0xFFFFFFFFFFE4n; // flags bit 2 + flags bits 5-47
-    el('reserved_warn').style.display = (flags & reservedMask) !== 0n ? 'block' : 'none';
+        // Reserved bits warning: bit 18 (flags bit 2) or bits 21-63 (flags bits 5-47)
+        const reservedMask = 0xFFFFFFFFFFE4n; // flags bit 2 + flags bits 5-47
+        el('reserved_warn').style.display = (flags & reservedMask) !== 0n ? 'block' : 'none';
+    } catch (e) {
+        el('policy_computed').value = '(invalid)';
+        el('mbo_warn').style.display = 'none';
+        el('reserved_warn').style.display = 'none';
+    }
 }
 
 ['abi_minor', 'abi_major', 'policy_flags'].forEach(n => {
