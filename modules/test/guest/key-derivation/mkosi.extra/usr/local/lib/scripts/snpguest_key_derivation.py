@@ -65,9 +65,15 @@ class TcbVersion:
                 f"snp=0x{self.snp:02x} mc=0x{self.microcode:02x}")
 
 
+EXPECTED_REPORT_VERSION = 2  # ATTESTATION_REPORT schema version this test was written for
+
+
 @dataclass
 class ReportInfo:
+    version: Optional[int] = None     # ATTESTATION_REPORT schema version (expected: 2)
     guest_svn: int = 0
+    family_id: Optional[str] = None   # hex string, 32 chars (16 bytes)
+    image_id: Optional[str] = None    # hex string, 32 chars (16 bytes)
     current_tcb: Optional[TcbVersion] = None
     committed_tcb: Optional[TcbVersion] = None
     reported_tcb: Optional[TcbVersion] = None
@@ -89,20 +95,26 @@ def check_command_status(
     status: int,
     command_name: str,
     stdout: str,
-    stderr: str
+    stderr: str,
+    expected_failure: bool = False,
 ) -> bool:
-    """Check command status, log to file, and print errors."""
+    """Check command status, log to file, and print errors.
+
+    If expected_failure is True, a non-zero exit is treated as a normal
+    negative-test outcome: the failure is not logged to stderr.
+    """
     status_entry = {command_name: str(status)}
     with open(KEY_DERIVATION_STATUS_LOG, 'a') as f:
         json.dump(status_entry, f)
         f.write('\n')
 
     if status != 0:
-        print(f"ERROR: {command_name} failed!", file=sys.stderr)
-        if stderr:
-            print(f"STDERR: {stderr}", file=sys.stderr)
-        if stdout:
-            print(f"STDOUT: {stdout}", file=sys.stderr)
+        if not expected_failure:
+            print(f"ERROR: {command_name} failed!", file=sys.stderr)
+            if stderr:
+                print(f"STDERR: {stderr}", file=sys.stderr)
+            if stdout:
+                print(f"STDOUT: {stdout}", file=sys.stderr)
         return False
     else:
         if stdout:
@@ -116,7 +128,8 @@ def derive_key(
     vmpl: int = 0,
     guest_svn: int = 0,
     tcb_version: int = 0,
-    guest_field_select: int = 1
+    guest_field_select: int = 1,
+    expected_failure: bool = False,
 ) -> bool:
     """
     Derive a key using snpguest key command.
@@ -130,6 +143,8 @@ def derive_key(
                      per component; only mixed in when GFS bit 5 is set)
         guest_field_select: Guest field select bitmap (GFS is always mixed in;
                             individual bits enable mixing specific guest fields)
+        expected_failure: When True, a non-zero exit is a normal negative-test
+                          outcome and will not be logged as an ERROR.
 
     Returns:
         True if successful, False otherwise
@@ -151,7 +166,8 @@ def derive_key(
 
     dprint(f"CMD: {' '.join(str(x) for x in cmd)}")
     status, stdout, stderr = run_command(cmd, description)
-    return check_command_status(status, description, stdout, stderr)
+    return check_command_status(status, description, stdout, stderr,
+                                expected_failure=expected_failure)
 
 
 def read_key_hex(key_file: Path) -> Optional[str]:
@@ -167,14 +183,14 @@ def parse_tcb_section(section_text: str) -> TcbVersion:
     """Parse boot_loader/TEE/SNP/microcode values from a TCB section of report output."""
     tcb = TcbVersion()
     for attr, pattern in [
-        ('boot_loader', r'Boot\s*Loader\s*[:\s]+(?:0x)?([0-9a-fA-F]+)'),
-        ('tee',         r'TEE\s*[:\s]+(?:0x)?([0-9a-fA-F]+)'),
-        ('snp',         r'SNP\s*[:\s]+(?:0x)?([0-9a-fA-F]+)'),
-        ('microcode',   r'Microcode\s*[:\s]+(?:0x)?([0-9a-fA-F]+)'),
+        ('boot_loader', r'Boot\s*Loader\s*[:\s]+(0x[0-9a-fA-F]+|[0-9]+)'),
+        ('tee',         r'TEE\s*[:\s]+(0x[0-9a-fA-F]+|[0-9]+)'),
+        ('snp',         r'SNP\s*[:\s]+(0x[0-9a-fA-F]+|[0-9]+)'),
+        ('microcode',   r'Microcode\s*[:\s]+(0x[0-9a-fA-F]+|[0-9]+)'),
     ]:
         m = re.search(pattern, section_text, re.IGNORECASE)
         if m:
-            setattr(tcb, attr, int(m.group(1), 16))
+            setattr(tcb, attr, int(m.group(1), 0))
     return tcb
 
 
@@ -188,10 +204,23 @@ def parse_report_info(display_output: str) -> Optional[ReportInfo]:
     try:
         info = ReportInfo()
 
-        m = re.search(r'Guest\s+SVN\s*[:\s]+(?:0x)?([0-9a-fA-F]+)',
+        m = re.search(r'^\s*Version\s*[:\s]+(0x[0-9a-fA-F]+|[0-9]+)',
+                      display_output, re.IGNORECASE | re.MULTILINE)
+        if m:
+            info.version = int(m.group(1), 0)
+
+        m = re.search(r'Guest\s+SVN\s*[:\s]+(0x[0-9a-fA-F]+|[0-9]+)',
                       display_output, re.IGNORECASE)
         if m:
-            info.guest_svn = int(m.group(1), 16)
+            info.guest_svn = int(m.group(1), 0)
+
+        m = re.search(r'Family\s+ID\s*[:\s]+([0-9a-fA-F]+)', display_output, re.IGNORECASE)
+        if m:
+            info.family_id = m.group(1).lower()
+
+        m = re.search(r'Image\s+ID\s*[:\s]+([0-9a-fA-F]+)', display_output, re.IGNORECASE)
+        if m:
+            info.image_id = m.group(1).lower()
 
         boundary = r'(?:Current|Committed|Reported|Launch)\s+TCB'
         for section_name, attr in [
@@ -249,8 +278,31 @@ def print_attestation_report() -> Optional[ReportInfo]:
 
     report_info = parse_report_info(report_text)
     if report_info:
+        if report_info.version is not None:
+            version_note = (
+                "" if report_info.version == EXPECTED_REPORT_VERSION
+                else f" *** UNEXPECTED (expected {EXPECTED_REPORT_VERSION}) —"
+                     f" TCB layout assumptions may not apply ***"
+            )
+            print(f"  Report version: {report_info.version}{version_note}")
+        else:
+            print("  Report version: (not parsed)", file=sys.stderr)
+
         print(f"  Guest SVN:     {report_info.guest_svn} "
               f"(upper bound for --guest_svn)")
+
+        def _id_note(hex_val: Optional[str]) -> str:
+            if not hex_val:
+                return "(not parsed)"
+            return ("(non-zero — ID block present)"
+                    if any(c != '0' for c in hex_val)
+                    else "(all zeros — no ID block)")
+
+        print(f"  Family ID:     {report_info.family_id or '(not parsed)'} "
+              f"{_id_note(report_info.family_id)}")
+        print(f"  Image ID:      {report_info.image_id or '(not parsed)'} "
+              f"{_id_note(report_info.image_id)}")
+
         if report_info.current_tcb:
             print(f"  Current  TCB:  {report_info.current_tcb}")
         if report_info.committed_tcb:
@@ -264,6 +316,13 @@ def print_attestation_report() -> Optional[ReportInfo]:
         print("  WARNING: Could not parse report values", file=sys.stderr)
 
     return report_info
+
+
+def report_version_ok(report_info: Optional[ReportInfo]) -> bool:
+    """Return True if the attestation report version matches what this test expects."""
+    if report_info is None or report_info.version is None:
+        return False
+    return report_info.version == EXPECTED_REPORT_VERSION
 
 
 def generate_tcb_candidates(committed: TcbVersion, max_count: int = 30) -> List[int]:
@@ -402,16 +461,34 @@ def test_guest_svn_sensitivity(report_info: Optional[ReportInfo]) -> bool:
 
     print(f"  Testing {len(svn_values)} SVN values: {svn_values}")
     keys: Dict[int, str] = {}
+    failed_svns: List[int] = []
     for svn in svn_values:
         key_file = KEY_DERIVATION_DIR / f"svn{svn}_key.bin"
+        # Values above the id-block launch SVN are expected to be rejected by
+        # the firmware; treat all loop failures as expected so they don't flood
+        # the log with ERROR output.
         if not derive_key(key_file, root_key="vcek", vmpl=0, guest_svn=svn,
-                          guest_field_select=1 << 4):
-            print(f"  WARNING: SVN={svn} derivation failed — skipping", file=sys.stderr)
+                          guest_field_select=1 << 4, expected_failure=True):
+            failed_svns.append(svn)
             continue
         hex_key = read_key_hex(key_file)
         if hex_key:
             keys[svn] = hex_key
             dprint(f"  SVN={svn}: 0x{hex_key}")
+
+    if failed_svns:
+        print(f"  {len(failed_svns)} SVN value(s) rejected by firmware "
+              f"(above id-block bound): {failed_svns}")
+
+    # Explicitly verify the id-block SVN bound is enforced
+    if max_svn > 0:
+        bound_file = KEY_DERIVATION_DIR / f"svn{max_svn + 1}_bound_check.bin"
+        if derive_key(bound_file, root_key="vcek", vmpl=0, guest_svn=max_svn + 1,
+                      guest_field_select=1 << 4, expected_failure=True):
+            print(f"✗ FAIL: SVN={max_svn + 1} succeeded — id-block bound "
+                  f"({max_svn}) not enforced by firmware", file=sys.stderr)
+            return False
+        print(f"  ✓ ID block bound enforced: SVN={max_svn + 1} correctly rejected")
 
     if len(keys) < 2:
         print("ERROR: Fewer than 2 successful derivations — cannot test sensitivity",
@@ -453,17 +530,22 @@ def test_tcb_sensitivity(report_info: Optional[ReportInfo]) -> bool:
         return True
 
     keys: Dict[int, str] = {}
+    failed_tcbs: List[int] = []
     for tcb_u64 in candidates:
         key_file = KEY_DERIVATION_DIR / f"tcb_{tcb_u64:016x}_key.bin"
         if not derive_key(key_file, root_key="vcek", vmpl=0, tcb_version=tcb_u64,
-                          guest_field_select=1 << 5):
-            print(f"  WARNING: TCB=0x{tcb_u64:016x} derivation failed — skipping",
-                  file=sys.stderr)
+                          guest_field_select=1 << 5, expected_failure=True):
+            failed_tcbs.append(tcb_u64)
             continue
         hex_key = read_key_hex(key_file)
         if hex_key:
             keys[tcb_u64] = hex_key
             dprint(f"  TCB=0x{tcb_u64:016x}: 0x{hex_key}")
+
+    if failed_tcbs:
+        print(f"  {len(failed_tcbs)} TCB candidate(s) rejected by firmware "
+              f"(above committed bound): "
+              f"{[f'0x{v:016x}' for v in failed_tcbs]}")
 
     if len(keys) < 2:
         print("ERROR: Fewer than 2 successful derivations — cannot test sensitivity",
@@ -471,12 +553,46 @@ def test_tcb_sensitivity(report_info: Optional[ReportInfo]) -> bool:
         return False
 
     unique_keys = set(keys.values())
-    if len(unique_keys) == len(keys):
+    passed = len(unique_keys) == len(keys)
+    if passed:
         print(f"✓ PASS: All {len(keys)} TCB values produce distinct keys")
-        return True
     else:
         print("✗ FAIL: Some TCB values produce identical keys", file=sys.stderr)
-        return False
+
+    # Per-component bound enforcement check.
+    # TCB_VERSION bit layout is schema-version-specific (attestation report v2,
+    # ID block v1, SNP ABI spec). Skip if the report version doesn't match.
+    if not report_version_ok(report_info):
+        print("  Skipping TCB bound check: report version unknown or unexpected")
+        return passed
+
+    checkable = [(comp, label, max_val) for comp, label, max_val in [
+        ('boot_loader', 'Boot Loader', committed.boot_loader),
+        ('tee',         'TEE',         committed.tee),
+        ('snp',         'SNP',         committed.snp),
+        ('microcode',   'Microcode',   committed.microcode),
+    ] if max_val > 0]
+
+    if not checkable:
+        print("  All committed TCB components are 0 — bound check skipped"
+              " (fields may not be applicable on this platform)")
+        return passed
+
+    for comp, label, max_val in checkable:
+        over = TcbVersion()
+        setattr(over, comp, max_val + 1)
+        bound_file = KEY_DERIVATION_DIR / f"tcb_bound_{comp}.bin"
+        if derive_key(bound_file, root_key="vcek", vmpl=0,
+                      tcb_version=over.to_u64(),
+                      guest_field_select=1 << 5,
+                      expected_failure=True):
+            print(f"✗ FAIL: {label} SVN={max_val + 1} succeeded — "
+                  f"committed bound ({max_val}) not enforced", file=sys.stderr)
+            passed = False
+        else:
+            print(f"  ✓ TCB bound enforced: {label} SVN={max_val + 1} correctly rejected")
+
+    return passed
 
 
 def test_guest_field_select_sensitivity() -> bool:
@@ -506,6 +622,85 @@ def test_guest_field_select_sensitivity() -> bool:
         return False
 
 
+def test_gfs_field_mixing(report_info: Optional[ReportInfo]) -> bool:
+    """
+    Test that GFS bits 0-3 each produce a key distinct from the GFS=0 baseline.
+
+    GFS is always mixed into the derived key. Bits 0-3 additionally mix in
+    specific guest fields from the ID block / attestation report:
+      Bit 0: Image ID
+      Bit 1: Family ID
+      Bit 2: Measurement
+      Bit 3: Guest SVN Policy
+
+    Each bit is tested individually against a GFS=0 baseline. All should
+    produce distinct keys, confirming each bit has an effect on derivation.
+
+    Note: this test cannot prove that the field *values* matter (that would
+    require two runs with different ID blocks), only that each bit has an effect.
+    When family_id/image_id are non-zero in the report, a non-zero ID block is
+    confirmed present, lending weight to the result for bits 0 and 1.
+    """
+    has_id_block = False
+    if report_info:
+        if report_info.family_id and any(c != '0' for c in report_info.family_id):
+            has_id_block = True
+        if report_info.image_id and any(c != '0' for c in report_info.image_id):
+            has_id_block = True
+
+    if not has_id_block:
+        print("  Note: family_id and image_id are all zeros — ID block may not be present.")
+        print("  Bits 0 and 1 may still differ from baseline due to GFS value mixing.")
+
+    baseline_file = KEY_DERIVATION_DIR / "gfs_field_baseline.bin"
+    if not derive_key(baseline_file, root_key="vcek", vmpl=0, guest_field_select=0):
+        return False
+    baseline_hex = read_key_hex(baseline_file)
+    if baseline_hex is None:
+        return False
+    dprint(f"  GFS=0x00 (baseline): 0x{baseline_hex}")
+
+    bits = [
+        (0, "Image ID"),
+        (1, "Family ID"),
+        (2, "Measurement"),
+        (3, "Guest SVN Policy"),
+        # Bits 4 and 5 are tested with svn=0 and tcb=0 fixed. This does not prove
+        # value-sensitivity (only one valid value available without an ID block or
+        # non-zero committed TCB), but confirms each bit participates in derivation
+        # via GFS value mixing (GFS itself is always mixed in).
+        (4, "Guest SVN"),
+        (5, "TCB Version"),
+    ]
+
+    passed = True
+    for bit, label in bits:
+        gfs = 1 << bit
+        key_file = KEY_DERIVATION_DIR / f"gfs_field_bit{bit}.bin"
+        if not derive_key(key_file, root_key="vcek", vmpl=0, guest_field_select=gfs):
+            print(f"  ✗ FAIL: GFS=0x{gfs:02x} ({label}) derivation failed",
+                  file=sys.stderr)
+            passed = False
+            continue
+        hex_key = read_key_hex(key_file)
+        if hex_key is None:
+            passed = False
+            continue
+        dprint(f"  GFS=0x{gfs:02x} ({label}): 0x{hex_key}")
+        if hex_key != baseline_hex:
+            print(f"  ✓ GFS=0x{gfs:02x} ({label}): differs from baseline")
+        else:
+            print(f"  ✗ FAIL: GFS=0x{gfs:02x} ({label}): same as baseline",
+                  file=sys.stderr)
+            passed = False
+
+    if passed:
+        print("✓ PASS: All GFS field bits (0-3) produce keys distinct from baseline")
+    else:
+        print("✗ FAIL: One or more GFS field bits matched baseline", file=sys.stderr)
+    return passed
+
+
 def run_gfs_sweep() -> int:
     """
     Derive a key for every valid GFS value (0x00-0x7f), keeping all other
@@ -529,7 +724,8 @@ def run_gfs_sweep() -> int:
     for gfs in range(0x80):
         key_file = KEY_DERIVATION_DIR / f"gfs_{gfs:02x}_key.bin"
         if not derive_key(key_file, root_key="vcek", vmpl=0,
-                          guest_svn=0, tcb_version=0, guest_field_select=gfs):
+                          guest_svn=0, tcb_version=0, guest_field_select=gfs,
+                          expected_failure=True):
             failed.append(gfs)
             continue
         hex_key = read_key_hex(key_file)
@@ -627,6 +823,7 @@ def main() -> int:
         ("Guest SVN Sensitivity",          lambda: test_guest_svn_sensitivity(report_info)),
         ("TCB Sensitivity",                lambda: test_tcb_sensitivity(report_info)),
         ("Guest Field Select Sensitivity", lambda: test_guest_field_select_sensitivity()),
+        ("GFS Field Mixing",               lambda: test_gfs_field_mixing(report_info)),
     ]
 
     results = []
