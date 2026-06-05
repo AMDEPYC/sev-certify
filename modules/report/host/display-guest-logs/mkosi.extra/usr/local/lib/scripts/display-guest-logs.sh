@@ -30,6 +30,8 @@ while [[ $ELAPSED -lt $TIMEOUT ]]; do
     ELAPSED=$((ELAPSED + INTERVAL))
 done
 
+echo -e "\nTimeout waiting for guest tests to complete."
+
 # If timeout hits but logs are there, then show the logs.
 guest_service_log=$(journalctl -D "${GUEST_JOURNAL_LOCATION}" "${args[@]}" -o cat)
 
