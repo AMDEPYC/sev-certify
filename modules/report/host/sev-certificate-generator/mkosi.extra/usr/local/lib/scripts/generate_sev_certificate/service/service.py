@@ -41,6 +41,10 @@ class Service:
 
         # Parse the <service description> part
         match = re.split(r'(?i)-\s+', service_detail, maxsplit=1)
+        if len(match) < 2:
+            print(f"WARNING: could not parse description for {service!r}; "
+                  f"grep output: {service_detail!r}", file=sys.stderr)
+            return "(description unavailable)"
         service_description=match[1].strip()
         return service_description
 
