@@ -12,12 +12,25 @@ from pathlib import Path
 from .models import (
     CertificationDefinition,
     CertificationResult,
+    StepContext,
     StepResult,
     TestDefinition,
     TestResult,
 )
 from .output import write_json, write_markdown
-from .runner import load_steps, run_step
+from .runner import (
+    effective_vm_profile,
+    import_test_module,
+    load_test_execution_plan,
+    run_callable_step,
+    run_guest_pull_step,
+    run_guest_step,
+    run_step,
+    run_vm_launch_step,
+    run_vm_stop_step,
+    test_artifact_dir,
+)
+from .vm_profile import VMLaunchResult, stop_vm
 
 _LINE_WIDTH = 80
 
@@ -42,6 +55,9 @@ def _load_test_entries(toml_path: Path, data: dict) -> list[TestDefinition]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    '''
+    Parse optional flags
+    '''
     parser = argparse.ArgumentParser(
         prog="sev_verify",
         description="SEV-SNP certification testing harness",
@@ -67,6 +83,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path("results"),
         help="Directory for JSON and Markdown result files (default: results/)",
+    )
+    parser.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        default=Path("artifacts"),
+        metavar="DIR",
+        help="Base directory for per-test artifact folders (default: ./artifacts)",
+    )
+    parser.add_argument(
+        "--qemu-binary",
+        "--qemu",
+        dest="qemu_binary",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Override QEMU executable (overrides test VMProfile and default qemu-system-x86_64)",
+    )
+    parser.add_argument(
+        "--ovmf",
+        dest="ovmf",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Override OVMF firmware .fd (overrides test VMProfile and host search paths)",
     )
     return parser.parse_args(argv)
 
@@ -260,10 +300,19 @@ def _step_result_line(sr: StepResult, is_last: bool) -> str:
 # ── Live execution + output ──────────────────────────────────────
 
 
-def execute_test(test: TestDefinition, guest_path: Path) -> TestResult:
+def execute_test(
+    test: TestDefinition,
+    guest_path: Path,
+    *,
+    artifacts_root: Path,
+    certification_version: str | None = None,
+    qemu_binary: str | None = None,
+    ovmf_path: str | None = None,
+) -> TestResult:
     """Run a test, printing each step live as it executes."""
     started_at = datetime.now(timezone.utc).isoformat()
     step_results: list[StepResult] = []
+    launch: VMLaunchResult | None = None
 
     if test.description:
         name_part = f"   {test.name} "
@@ -274,68 +323,158 @@ def execute_test(test: TestDefinition, guest_path: Path) -> TestResult:
         _flush(f"   {test.name}")
 
     try:
-        steps = load_steps(test)
-    except Exception as exc:
-        _flush(f"   [ERR!] — failed to load module: {exc}")
-        return TestResult(
-            test=test, result="error", step_results=[],
-            started_at=started_at, completed_at=datetime.now(timezone.utc).isoformat(),
+        try:
+            steps, declared_profile = load_test_execution_plan(test)
+        except Exception as exc:
+            _flush(f"   [ERR!] — failed to load module: {exc}")
+            return TestResult(
+                test=test, result="error", step_results=[],
+                started_at=started_at, completed_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+        artifact_dir = test_artifact_dir(artifacts_root, certification_version, test)
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        _flush(f"   Artifacts: {artifact_dir}")
+
+        profile = None
+        if test.requires_vm:
+            profile = effective_vm_profile(
+                declared_profile,
+                guest_path,
+                qemu_binary=qemu_binary,
+                ovmf_path=ovmf_path,
+            )
+
+        mod = import_test_module(test)
+        ctx = StepContext(
+            test=test,
+            guest_path=guest_path,
+            step_results=step_results,
+            module=mod,
+            artifact_dir=artifact_dir,
+            profile=profile,
+            launch=None,
+            cli_qemu_binary=qemu_binary,
+            cli_ovmf_path=ovmf_path,
         )
 
-    overall = "pass"
-    total_steps = len(steps)
+        overall = "pass"
+        total_steps = len(steps)
 
-    for i, step in enumerate(steps):
-        is_last = i == total_steps - 1
+        for i, step in enumerate(steps):
+            is_last = i == total_steps - 1
 
-        # Guest-side steps can't run yet
-        if step.runs_on == "guest":
-            sr = StepResult(step=step, result="skip")
+            ctx.profile = profile
+            ctx.launch = launch
+
+            if _IS_TTY:
+                connector = "└─" if is_last else "├─"
+                _flush(f"   {connector} {step.name} ...", end="\r")
+
+            if step.kind == "vm_launch":
+                if profile is None:
+                    sr = StepResult(
+                        step=step,
+                        result="error",
+                        stderr="vm_launch step requires guest image / VM profile context",
+                    )
+                elif launch is not None:
+                    sr = StepResult(
+                        step=step,
+                        result="error",
+                        stderr="Duplicate vm_launch step (guest is already running)",
+                        duration_ms=0,
+                    )
+                else:
+                    sr, new_launch = run_vm_launch_step(step, profile)
+                    launch = new_launch
+            elif step.kind == "vm_stop":
+                if launch is None:
+                    sr = StepResult(
+                        step=step,
+                        result="error",
+                        stderr="vm_stop: no running guest (run vm_launch or a guest step first)",
+                        duration_ms=0,
+                    )
+                else:
+                    sr = run_vm_stop_step(step, launch)
+                    if sr.result != "error":
+                        launch = None
+            elif step.kind == "host":
+                sr = run_step(step, guest_path, artifact_dir)
+            elif step.kind in ("guest", "guest_pull"):
+                if profile is None:
+                    sr = StepResult(
+                        step=step,
+                        result="error",
+                        stderr="Guest steps require a guest image path and VM profile",
+                    )
+                else:
+                    if launch is None:
+                        launch = profile.vm_launch()
+                    if not launch.ok:
+                        sr = StepResult(
+                            step=step,
+                            result="error",
+                            stderr=launch.message,
+                            duration_ms=0,
+                        )
+                    elif step.kind == "guest":
+                        sr = run_guest_step(step, launch.profile)
+                    else:
+                        sr = run_guest_pull_step(step, launch.profile, artifact_dir)
+            elif step.kind == "callable":
+                sr = run_callable_step(step, ctx)
+            else:
+                sr = StepResult(
+                    step=step,
+                    result="error",
+                    stderr=f"Unsupported step kind {step.kind!r}",
+                )
             step_results.append(sr)
+
             _flush(_step_result_line(sr, is_last))
-            continue
 
-        if _IS_TTY:
-            connector = "└─" if is_last else "├─"
-            _flush(f"   {connector} {step.name} ...", end="\r")
+            if sr.result in ("fail", "error"):
+                if sr.stderr:
+                    gutter = "   " if is_last else "│  "
+                    for line in sr.stderr.strip().splitlines()[:5]:
+                        _flush(f"   {gutter}   {line}")
+                if step.type == "setup":
+                    overall = "fail"
+                    for j, remaining in enumerate(steps[i + 1:], i + 1):
+                        skip = StepResult(step=remaining, result="skip")
+                        step_results.append(skip)
+                        _flush(_step_result_line(skip, j == total_steps - 1))
+                    break
+                elif step.type == "required":
+                    overall = "fail"
 
-        sr = run_step(step, guest_path)
-        step_results.append(sr)
+        passed = sum(1 for s in step_results if s.result == "pass")
+        failed = sum(1 for s in step_results if s.result in ("fail", "error"))
+        icon = _RESULT_LABEL.get(overall, "????")
+        counts = f"{passed}/{total_steps} passed" if not failed else f"{failed}/{total_steps} failed"
+        suffix = f" {counts} [{icon}]"
+        name_part = f"   result:"
+        avail = _LINE_WIDTH - len(name_part) - len(suffix)
+        _flush(f"{name_part}{' ' * max(avail, 2)}{suffix}")
 
-        _flush(_step_result_line(sr, is_last))
-
-        if sr.result in ("fail", "error"):
-            if sr.stderr:
-                gutter = "   " if is_last else "│  "
-                for line in sr.stderr.strip().splitlines()[:5]:
-                    _flush(f"   {gutter}   {line}")
-            if step.type == "setup":
-                overall = "fail"
-                for j, remaining in enumerate(steps[i + 1:], i + 1):
-                    skip = StepResult(step=remaining, result="skip")
-                    step_results.append(skip)
-                    _flush(_step_result_line(skip, j == total_steps - 1))
-                break
-            elif step.type == "required":
-                overall = "fail"
-
-    passed = sum(1 for s in step_results if s.result == "pass")
-    failed = sum(1 for s in step_results if s.result in ("fail", "error"))
-    icon = _RESULT_LABEL.get(overall, "????")
-    counts = f"{passed}/{total_steps} passed" if not failed else f"{failed}/{total_steps} failed"
-    suffix = f" {counts} [{icon}]"
-    name_part = f"   result:"
-    avail = _LINE_WIDTH - len(name_part) - len(suffix)
-    _flush(f"{name_part}{' ' * max(avail, 2)}{suffix}")
-
-    return TestResult(
-        test=test, result=overall, step_results=step_results,
-        started_at=started_at, completed_at=datetime.now(timezone.utc).isoformat(),
-    )
+        return TestResult(
+            test=test, result=overall, step_results=step_results,
+            started_at=started_at, completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+    finally:
+        if launch is not None:
+            stop_vm(launch)
 
 
 def execute_certification(
-    cert: CertificationDefinition, guest_path: Path,
+    cert: CertificationDefinition,
+    guest_path: Path,
+    *,
+    artifacts_root: Path,
+    qemu_binary: str | None = None,
+    ovmf_path: str | None = None,
 ) -> CertificationResult:
     """Run all tests in a certification with live output."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -353,7 +492,14 @@ def execute_certification(
                 _flush(f"   ── {test.level} ──")
             current_level = test.level
 
-        tr = execute_test(test, guest_path)
+        tr = execute_test(
+            test,
+            guest_path,
+            artifacts_root=artifacts_root,
+            certification_version=cert.version,
+            qemu_binary=qemu_binary,
+            ovmf_path=ovmf_path,
+        )
         test_results.append(tr)
         if tr.result != "pass":
             overall = tr.result
@@ -407,6 +553,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: guest path does not exist: {guest_path}", file=sys.stderr)
         return 1
 
+    qemu_override: str | None = None
+    if args.qemu_binary is not None:
+        if not args.qemu_binary.is_file():
+            print(f"Error: QEMU binary not found: {args.qemu_binary}", file=sys.stderr)
+            return 1
+        qemu_override = str(args.qemu_binary.resolve())
+
+    ovmf_override: str | None = None
+    if args.ovmf is not None:
+        if not args.ovmf.is_file():
+            print(f"Error: OVMF image not found: {args.ovmf}", file=sys.stderr)
+            return 1
+        ovmf_override = str(args.ovmf.resolve())
+
     cert_dir = Path(__file__).resolve().parent / "cert_tests"
 
     version_filters = _parse_version_filters(args.versions)
@@ -420,6 +580,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     _flush(f"   Guest: {guest_path}")
+    if qemu_override:
+        _flush(f"   QEMU:  {qemu_override}")
+    if ovmf_override:
+        _flush(f"   OVMF:  {ovmf_override}")
     _flush("")
 
     total_tests = 0
@@ -432,7 +596,14 @@ def main(argv: list[str] | None = None) -> int:
         _flush("")
         prereq_results = []
         for test in prereqs:
-            tr = execute_test(test, guest_path)
+            tr = execute_test(
+                test,
+                guest_path,
+                artifacts_root=args.artifacts_dir,
+                certification_version=None,
+                qemu_binary=qemu_override,
+                ovmf_path=ovmf_override,
+            )
             prereq_results.append(tr)
             _flush("")
 
@@ -460,7 +631,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Warning: no tests match level filter(s) {levels!r} "
                   f"in certification {cert.version}", file=sys.stderr)
             continue
-        cr = execute_certification(cert, guest_path)
+        cr = execute_certification(
+            cert,
+            guest_path,
+            artifacts_root=args.artifacts_dir,
+            qemu_binary=qemu_override,
+            ovmf_path=ovmf_override,
+        )
         cert_results.append(cr)
         total_tests += len(cr.test_results)
         total_passed += sum(1 for tr in cr.test_results if tr.result == "pass")

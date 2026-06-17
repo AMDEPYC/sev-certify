@@ -35,9 +35,11 @@ def _step_dict(sr: StepResult, *, include_output: bool) -> dict[str, Any]:
     d: dict[str, Any] = {
         "name": sr.step.name,
         "type": sr.step.type,
-        "runs_on": sr.step.runs_on,
+        "kind": sr.step.kind,
         "result": sr.result,
     }
+    if sr.step.kind == "callable" and sr.step.handler:
+        d["handler"] = sr.step.handler
     if sr.duration_ms is not None:
         d["duration_ms"] = sr.duration_ms
     if include_output:
