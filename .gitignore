@@ -21,3 +21,4 @@ images/*/guest-*
 images/*/host-*
 
 results/
+artifacts/

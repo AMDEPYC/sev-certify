@@ -11,19 +11,50 @@ python3 -m sev_verify /path/to/guest.efi -v 3.0
 # Run multiple levels
 python3 -m sev_verify /path/to/guest.efi -v 3.0 -v 3.1
 
+# Override QEMU and/or OVMF (paths must exist; applied to every test that launches a VM)
+python3 -m sev_verify /path/to/guest.efi --qemu-binary /opt/qemu/bin/qemu-system-x86_64 --ovmf /usr/share/ovmf/OVMF.amdsev.fd -v 3.0
+# Short form for QEMU:
+python3 -m sev_verify /path/to/guest.efi --qemu /opt/qemu/bin/qemu-system-x86_64
+
 # Run all certifications found in cert_tests/
 python3 -m sev_verify /path/to/guest.efi
+
+# Put per-test artifacts somewhere other than ./artifacts
+python3 -m sev_verify /path/to/guest.efi --artifacts-dir /data/sev-artifacts -v 3.0
+
+# Put results somewhere other than results/
+python3 -m sev_verify /path/to/guest.efi --output-dir /data/sev-artifacts -v 3.0
 ```
 
 ## How it works
 
 1. Discover manifests at `cert_tests/*/manifest.toml`. Each manifest declares test entries (name, scope, module path).
 
-2. For each test, import its Python module from the same `cert_tests/<level>/` directory and call `steps()` to get the ordered list of `Step` objects. Steps specify a shell command, where it runs (host or guest), what constitutes success, and a timeout.
+2. For each test, import its Python module and call `steps()` to get the ordered list of `Step` objects. Each step has:
 
-3. Execute steps sequentially. Host steps run locally via subprocess. Guest steps are sent to the VM over a dedicated serial channel (`ttyS1`). For tests with `scope: guest` or `scope: mixed`, a QEMU SNP guest is launched before the first guest step and torn down after the last.
+   - **`type`** — certification semantics: `setup` (failure skips remaining steps), `required`, or `info`.
+   - **`kind`** — what runs: `host` (local shell), `vm_launch` (start the SEV-SNP guest once), **`vm_stop`** (terminate the guest started for this test), `guest` (shell on the guest over vsock), `guest_pull` (copy a file from guest to host using `guest_src` + `host_dest`), or **`callable`** (run Python in-process: set **`handler`** to the name of a function on the same test module; see below).
+   - **`command`**, **`handler`**, **`expected_result`**, **`timeout`**, and for `guest_pull` the paths **`guest_src`** / **`host_dest`**.
 
-4. Write results to `results/`.
+3. **`kind="callable"`** — the harness calls `getattr(<test_module>, step.handler)(ctx)` where **`ctx`** is a **`StepContext`**: manifest **`test`**, CLI **`guest_path`**, **`step_results`** from earlier steps in this run, the loaded **`module`**, when a VM is active **`profile`** / **`launch`**, and global **`cli_qemu_binary`** / **`cli_ovmf_path`** when you passed **`--qemu-binary`** / **`--ovmf`**. The handler must return **`StepHandlerResult(exit_code=..., stdout=..., stderr=...)`**; the same **`expected_result`** rules apply (`exit_code:…`, `stdout_contains:…`). Use this for comparisons (e.g. parse `report.bin` and check fields), derived checks, or any logic that is not a shell one-liner. The step **`timeout`** is enforced with a thread-pool wait (stuck CPU in C extensions may not interrupt cleanly).
+
+4. If in the test manifest the scope is defined as either `guest` or `mixed`, the harness builds a `VMProfile` from the test module (`vm_profile()` or `vm_profile` attribute) merged with the CLI `path_to_guest`. If `vm_profile` is omitted, defaults from `vm_profile.VMProfile` are used with the CLI image.
+
+5. Execute steps in order. A `vm_launch` step starts QEMU and waits for the vsock agent; `guest` / `guest_pull` communicate with the VM that has been launched. A **`vm_stop`** step calls `stop_vm` and clears the running guest; Later `vm_launch` can start again. Host steps use subprocess. `guest_pull` runs `base64` on the guest and writes decoded bytes to `host_dest`. If the test ends with a guest still running, the harness still tears it down in a `finally` block.
+
+6. Write results to `results/` (or ``--output-dir``).
+
+## Artifacts directory
+
+Per-test files (pulled guest binaries, logs you add, etc.) go under **``--artifacts-dir``** (default `./artifacts`), organized as::
+
+    <artifacts-dir>/<manifest version>/<test level>/<test_name>/
+
+Example: manifest ``version = "3.0"``, test ``name = "vm-launch-attest"``, ``level = "3.0.0-0"`` → ``artifacts/3.0/3.0.0-0/vm_launch_attest/`` (hyphens in the manifest name become underscores in the folder name).
+
+Prerequisite tests (no certification) use ``<artifacts-dir>/prereqs/<test_name>/``.
+
+The harness creates the directory before the first step and prints ``Artifacts: …``. Callable steps use ``ctx.artifact_dir``; host shell steps get ``$SEV_VERIFY_ARTIFACT_DIR``. For ``guest_pull``, a *relative* ``host_dest`` is resolved under ``artifact_dir``; absolute paths are unchanged.
 
 ## Layout
 
@@ -31,11 +62,14 @@ python3 -m sev_verify /path/to/guest.efi
 sev_verify/              Harness package
   cli.py                 CLI arg parsing + entry point
   models.py              Step, TestDefinition, CertificationDefinition
+  runner.py              load_test_execution_plan, run_step, run_vm_launch_step, …
+  vm_profile.py          VMProfile, QEMU argv, vm_launch / stop_vm
+  guest_vsock.py         vsock command channel to the guest
   cert_tests/            Certification levels
     common/              Shared test modules
-      snphost_ok.py      Test modules
+      snp_ok.py      Example host-only test
       ...
-    cert_3_0/            Level 3.0
+    c3_0/                Level 3.0 (example)
       manifest.toml      What to run
       ...
 results/                 Output (gitignored)
