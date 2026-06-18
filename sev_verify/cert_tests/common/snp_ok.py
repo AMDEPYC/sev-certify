@@ -6,7 +6,7 @@ distro paths (see :attr:`sev_verify.models.StepContext.cli_ovmf_path`).
 
 from pathlib import Path
 
-from sev_verify.models import Step, StepContext, StepHandlerResult
+from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
 from sev_verify.vm_profile import DEFAULT_OVMF_CANDIDATES
 
 
@@ -37,7 +37,7 @@ def verify_ovmf(ctx: StepContext) -> StepHandlerResult:
     )
 
 
-def steps() -> list[Step]:
+def steps() -> list[BaseStep]:
     '''
     Steps to verify SNP is enabled correctly in the system
     1. Run snphost ok
@@ -45,28 +45,19 @@ def steps() -> list[Step]:
     3. Verify a valid OVMF is present.
     '''
     return [
-        Step(
+        Step.for_host(
             name="snphost ok",
             type="required",
-            kind="host",
             command="snphost ok",
-            expected_result="exit_code:0",
-            timeout=30,
         ),
-        Step(
+        Step.for_host(
             name="snphost show guests",
             type="info",
-            kind="host",
             command="snphost show guests",
-            expected_result="exit_code:0",
-            timeout=10,
         ),
-        Step(
+        Step.for_callable(
             name="verify OVMF",
             type="info",
-            kind="callable",
             handler="verify_ovmf",
-            expected_result="exit_code:0",
-            timeout=10,
         ),
     ]

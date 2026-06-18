@@ -6,15 +6,15 @@ SEV-SNP firmware via /dev/sev.  All steps are host-side.
 TCB values are read from ``snphost show tcb`` at step-definition time
 so each command is a concrete ``snphost config set <args>`` invocation.
 
-Steps that modify config verify the change by invoking this module as a
-script:  ``python3 -m <this_module> verify-match|verify-differ``
+After config changes, :func:`verify_match` / :func:`verify_differ` compare
+Reported vs Platform TCB (same checks as ``python3 -m <this_module> verify-*``).
 """
 
 import re
 import subprocess
 import sys
 
-from sev_verify.models import Step
+from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
 
 _THIS_MODULE = __name__  # sev_verify.cert_tests.c3_0.c3_0_0_1.snphost_config_commit
 
@@ -66,15 +66,14 @@ def _read_platform_tcb() -> dict[str, str]:
     return sections["Platform"]
 
 
-# ── Verify CLI (called from step commands) ──────────────────────
-
-
-def _verify(mode: str) -> int:
-    """Compare Reported vs Platform TCB. Returns 0 on success."""
+def _verify_result(mode: str) -> StepHandlerResult:
+    """Compare Reported vs Platform TCB; used by callable steps and the CLI."""
     proc = _run_snphost_tcb()
     if proc.returncode != 0:
-        print(f"snphost show tcb failed: {proc.stderr.strip()}", file=sys.stderr)
-        return 1
+        return StepHandlerResult(
+            exit_code=1,
+            stderr=f"snphost show tcb failed: {proc.stderr.strip()}",
+        )
 
     sections = _parse_tcb_sections(proc.stdout)
     reported = sections.get("Reported", {})
@@ -83,14 +82,36 @@ def _verify(mode: str) -> int:
     match = all(reported.get(f) == platform.get(f) for f in _CORE_TCB_FIELDS)
 
     if mode == "verify-match" and not match:
-        print("FAIL: Reported TCB should match Platform after reset", file=sys.stderr)
-        print(f"  Reported: {reported}", file=sys.stderr)
-        print(f"  Platform: {platform}", file=sys.stderr)
-        return 1
+        lines = [
+            "FAIL: Reported TCB should match Platform after reset",
+            f"  Reported: {reported}",
+            f"  Platform: {platform}",
+        ]
+        return StepHandlerResult(exit_code=1, stderr="\n".join(lines))
     if mode == "verify-differ" and match:
-        print("FAIL: Reported TCB should differ from Platform after config set", file=sys.stderr)
-        return 1
-    return 0
+        return StepHandlerResult(
+            exit_code=1,
+            stderr="FAIL: Reported TCB should differ from Platform after config set",
+        )
+    return StepHandlerResult(exit_code=0)
+
+
+def verify_match(_ctx: StepContext) -> StepHandlerResult:
+    """After reset: Reported TCB must match Platform."""
+    return _verify_result("verify-match")
+
+
+def verify_differ(_ctx: StepContext) -> StepHandlerResult:
+    """After config set: Reported TCB must differ from Platform."""
+    return _verify_result("verify-differ")
+
+
+def _verify_cli(mode: str) -> int:
+    """CLI entry: print stderr from result and return exit code."""
+    r = _verify_result(mode)
+    if r.stderr:
+        print(r.stderr.strip(), file=sys.stderr)
+    return r.exit_code
 
 
 # ── Step definitions ────────────────────────────────────────────
@@ -105,11 +126,7 @@ def _config_set(bl: int, tee: int, snp: int, ucode: int,
     return f"snphost config set {args}"
 
 
-def _verify_cmd(mode: str) -> str:
-    return f"python3 -m {_THIS_MODULE} {mode}"
-
-
-def steps() -> list[Step]:
+def steps() -> list[BaseStep]:
     tcb = _read_platform_tcb()
     bl = int(tcb["Boot Loader"])
     tee = int(tcb["TEE"])
@@ -132,30 +149,61 @@ def steps() -> list[Step]:
         lo_ucode -= 1
 
     return [
-        Step(name="show-tcb", type="setup", kind="host",
-             command="snphost show tcb",
-             expected_result="exit_code:0", timeout=10),
-        Step(name="config-set-lower", type="required", kind="host",
-             command=f"{_config_set(lo_bl, lo_tee, lo_snp, lo_ucode, fmc, 0)} && {_verify_cmd('verify-differ')}",
-             expected_result="exit_code:0", timeout=10),
-        Step(name="config-reset", type="required", kind="host",
-             command=f"snphost config reset && {_verify_cmd('verify-match')}",
-             expected_result="exit_code:0", timeout=10),
-        Step(name="config-set-mask-chip-id", type="required", kind="host",
-             command=_config_set(bl, tee, snp, ucode, fmc, 1),
-             expected_result="exit_code:0", timeout=10),
-        Step(name="config-set-mask-chip-key", type="required", kind="host",
-             command=_config_set(bl, tee, snp, ucode, fmc, 2),
-             expected_result="exit_code:0", timeout=10),
-        Step(name="config-set-mask-both", type="required", kind="host",
-             command=_config_set(bl, tee, snp, ucode, fmc, 3),
-             expected_result="exit_code:0", timeout=10),
-        Step(name="config-reset-masks", type="required", kind="host",
-             command=f"snphost config reset && {_verify_cmd('verify-match')}",
-             expected_result="exit_code:0", timeout=10),
-        Step(name="commit", type="required", kind="host",
-             command="snphost commit",
-             expected_result="exit_code:0", timeout=10),
+        Step.for_host(
+            name="show-tcb",
+            type="setup",
+            command="snphost show tcb",
+        ),
+        Step.for_host(
+            name="config-set-lower",
+            type="required",
+            command=_config_set(lo_bl, lo_tee, lo_snp, lo_ucode, fmc, 0),
+        ),
+        Step.for_callable(
+            name="verify-differ after config-set-lower",
+            type="required",
+            handler="verify_differ",
+        ),
+        Step.for_host(
+            name="config-reset",
+            type="required",
+            command="snphost config reset",
+        ),
+        Step.for_callable(
+            name="verify-match after config-reset",
+            type="required",
+            handler="verify_match",
+        ),
+        Step.for_host(
+            name="config-set-mask-chip-id",
+            type="required",
+            command=_config_set(bl, tee, snp, ucode, fmc, 1),
+        ),
+        Step.for_host(
+            name="config-set-mask-chip-key",
+            type="required",
+            command=_config_set(bl, tee, snp, ucode, fmc, 2),
+        ),
+        Step.for_host(
+            name="config-set-mask-both",
+            type="required",
+            command=_config_set(bl, tee, snp, ucode, fmc, 3),
+        ),
+        Step.for_host(
+            name="config-reset-masks",
+            type="required",
+            command="snphost config reset",
+        ),
+        Step.for_callable(
+            name="verify-match after config-reset-masks",
+            type="required",
+            handler="verify_match",
+        ),
+        Step.for_host(
+            name="commit",
+            type="required",
+            command="snphost commit",
+        ),
     ]
 
 
@@ -163,4 +211,4 @@ if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in ("verify-match", "verify-differ"):
         print(f"usage: python3 -m {_THIS_MODULE} verify-match|verify-differ", file=sys.stderr)
         sys.exit(2)
-    sys.exit(_verify(sys.argv[1]))
+    sys.exit(_verify_cli(sys.argv[1]))

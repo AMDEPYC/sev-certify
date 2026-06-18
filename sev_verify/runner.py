@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 
 from .guest_vsock import GuestVsockError, pull_guest_file_to_host, run_guest_command
 from .models import (
-    Step,
+    BaseStep,
     StepContext,
     StepHandlerResult,
     StepResult,
@@ -23,7 +23,7 @@ from .models import (
 from .vm_profile import VMProfile, VMLaunchError, VMLaunchResult, stop_vm
 
 
-def _check_expected_values(step: Step, exit_code: int, stdout: str) -> bool:
+def _check_expected_values(step: BaseStep, exit_code: int, stdout: str) -> bool:
     """Check a step's expected_result against exit code and stdout."""
     kind, _, value = step.expected_result.partition(":")
     if kind == "exit_code":
@@ -33,7 +33,7 @@ def _check_expected_values(step: Step, exit_code: int, stdout: str) -> bool:
     return False
 
 
-def _check_expected(step: Step, proc: subprocess.CompletedProcess[str]) -> bool:
+def _check_expected(step: BaseStep, proc: subprocess.CompletedProcess[str]) -> bool:
     """Check a step's expected_result against the process outcome."""
     return _check_expected_values(step, proc.returncode, proc.stdout or "")
 
@@ -80,7 +80,7 @@ def test_artifact_dir(
     return artifacts_root / "prereqs" / test_name
 
 
-def load_test_execution_plan(test: TestDefinition) -> tuple[list[Step], VMProfile | None]:
+def load_test_execution_plan(test: TestDefinition) -> tuple[list[BaseStep], VMProfile | None]:
     """
     Import the test module once and return steps plus optional VM profile.
 
@@ -98,7 +98,7 @@ def load_test_execution_plan(test: TestDefinition) -> tuple[list[Step], VMProfil
     return steps, declared
 
 
-def load_steps(test: TestDefinition) -> list[Step]:
+def load_steps(test: TestDefinition) -> list[BaseStep]:
     """Import a test module and call its steps() function."""
     return load_test_execution_plan(test)[0]
 
@@ -108,7 +108,7 @@ def load_vm_profile(test: TestDefinition) -> VMProfile | None:
     return load_test_execution_plan(test)[1]
 
 
-def run_step(step: Step, guest_path: Path, artifact_dir: Path | None = None) -> StepResult:
+def run_step(step: BaseStep, guest_path: Path, artifact_dir: Path | None = None) -> StepResult:
     """Execute a single host step and return its result."""
     # Build the command line.  The guest_path is exposed as $GUEST_PATH
     # so scripts can use it, and also passed as $1 when the command is
@@ -167,7 +167,7 @@ def run_step(step: Step, guest_path: Path, artifact_dir: Path | None = None) -> 
 
 
 def run_vm_launch_step(
-    step: Step, profile: VMProfile,
+    step: BaseStep, profile: VMProfile,
 ) -> tuple[StepResult, VMLaunchResult | None]:
     """Start the guest described by ``profile``. Returns ``(StepResult, launch or None)``."""
     start = time.monotonic()
@@ -200,7 +200,7 @@ def run_vm_launch_step(
     )
 
 
-def run_vm_stop_step(step: Step, launch: VMLaunchResult) -> StepResult:
+def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
     """Terminate QEMU for ``launch`` (``stop_vm``; ``step.timeout`` is the wait/kill window)."""
     start = time.monotonic()
     try:
@@ -225,7 +225,7 @@ def run_vm_stop_step(step: Step, launch: VMLaunchResult) -> StepResult:
     )
 
 
-def run_guest_step(step: Step, profile: VMProfile) -> StepResult:
+def run_guest_step(step: BaseStep, profile: VMProfile) -> StepResult:
     """Execute a guest step over AF_VSOCK (same expected_result rules as host)."""
     start = time.monotonic()
     try:
@@ -256,7 +256,7 @@ def run_guest_step(step: Step, profile: VMProfile) -> StepResult:
 
 
 def run_guest_pull_step(
-    step: Step, profile: VMProfile, artifact_dir: Path | None = None,
+    step: BaseStep, profile: VMProfile, artifact_dir: Path | None = None,
 ) -> StepResult:
     """Copy ``step.guest_src`` from the guest to ``step.host_dest`` on the host."""
     start = time.monotonic()
@@ -288,7 +288,7 @@ def run_guest_pull_step(
     )
 
 
-def run_callable_step(step: Step, ctx: StepContext) -> StepResult:
+def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
     """Run ``ctx.module.<step.handler>(ctx)`` with a wall-clock timeout (thread pool)."""
     start = time.monotonic()
     fn = getattr(ctx.module, step.handler, None)

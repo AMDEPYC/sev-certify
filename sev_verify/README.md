@@ -30,13 +30,13 @@ python3 -m sev_verify /path/to/guest.efi --output-dir /data/sev-artifacts -v 3.0
 
 1. Discover manifests at `cert_tests/*/manifest.toml`. Each manifest declares test entries (name, scope, module path).
 
-2. For each test, import its Python module and call `steps()` to get the ordered list of `Step` objects. Each step has:
+2. For each test, import its Python module and call `steps()` to get the ordered list of **`BaseStep`** records. Each has a **`kind`** field (`host`, `guest`, `vm_launch`, …). Define steps with **`Step`** either **chained** (``Step(...).host(command=...)``, …) or **in one call** with ``Step.for_host(...)``, ``Step.for_callable(...)``, etc., so your editor shows every required parameter for that shape. Only the fields relevant to ``kind`` may be set; invalid combinations are rejected at construction.
 
    - **`type`** — certification semantics: `setup` (failure skips remaining steps), `required`, or `info`.
-   - **`kind`** — what runs: `host` (local shell), `vm_launch` (start the SEV-SNP guest once), **`vm_stop`** (terminate the guest started for this test), `guest` (shell on the guest over vsock), `guest_pull` (copy a file from guest to host using `guest_src` + `host_dest`), or **`callable`** (run Python in-process: set **`handler`** to the name of a function on the same test module; see below).
-   - **`command`**, **`handler`**, **`expected_result`**, **`timeout`**, and for `guest_pull` the paths **`guest_src`** / **`host_dest`**.
+   - **`kind`** — what runs: `host`, `vm_launch`, **`vm_stop`**, `guest`, `guest_pull`, or **`callable`** (in-process handler on the test module; see below).
+   - Common fields on **`Step`**: **`expected_result`** (default ``exit_code:0``), **`timeout`** (default **10** seconds); kind-specific arguments go on the chained method or the matching ``Step.for_*`` factory.
 
-3. **`kind="callable"`** — the harness calls `getattr(<test_module>, step.handler)(ctx)` where **`ctx`** is a **`StepContext`**: manifest **`test`**, CLI **`guest_path`**, **`step_results`** from earlier steps in this run, the loaded **`module`**, when a VM is active **`profile`** / **`launch`**, and global **`cli_qemu_binary`** / **`cli_ovmf_path`** when you passed **`--qemu-binary`** / **`--ovmf`**. The handler must return **`StepHandlerResult(exit_code=..., stdout=..., stderr=...)`**; the same **`expected_result`** rules apply (`exit_code:…`, `stdout_contains:…`). Use this for comparisons (e.g. parse `report.bin` and check fields), derived checks, or any logic that is not a shell one-liner. The step **`timeout`** is enforced with a thread-pool wait (stuck CPU in C extensions may not interrupt cleanly).
+3. **Callable steps** — ``Step(...).call(handler="fn")`` or ``Step.for_callable(..., handler="fn")`` builds a step whose `kind` is `callable`. The harness calls `getattr(<test_module>, step.handler)(ctx)` where **`ctx`** is a **`StepContext`**: manifest **`test`**, CLI **`guest_path`**, **`step_results`** from earlier steps in this run, the loaded **`module`**, when a VM is active **`profile`** / **`launch`**, and global **`cli_qemu_binary`** / **`cli_ovmf_path`** when you passed **`--qemu-binary`** / **`--ovmf`**. The handler must return **`StepHandlerResult(exit_code=..., stdout=..., stderr=...)`**; the same **`expected_result`** rules apply (`exit_code:…`, `stdout_contains:…`). Use this for comparisons (e.g. parse `report.bin` and check fields), derived checks, or any logic that is not a shell one-liner. The step **`timeout`** is enforced with a thread-pool wait (stuck CPU in C extensions may not interrupt cleanly).
 
 4. If in the test manifest the scope is defined as either `guest` or `mixed`, the harness builds a `VMProfile` from the test module (`vm_profile()` or `vm_profile` attribute) merged with the CLI `path_to_guest`. If `vm_profile` is omitted, defaults from `vm_profile.VMProfile` are used with the CLI image.
 
@@ -61,7 +61,7 @@ The harness creates the directory before the first step and prints ``Artifacts: 
 ```
 sev_verify/              Harness package
   cli.py                 CLI arg parsing + entry point
-  models.py              Step, TestDefinition, CertificationDefinition
+  models.py              Step (factory), BaseStep (runtime record), TestDefinition, …
   runner.py              load_test_execution_plan, run_step, run_vm_launch_step, …
   vm_profile.py          VMProfile, QEMU argv, vm_launch / stop_vm
   guest_vsock.py         vsock command channel to the guest

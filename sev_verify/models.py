@@ -10,35 +10,46 @@ from typing import Literal, get_args
 
 # Certification / failure-handling semantics (unchanged field name: ``type``)
 StepSeverity = Literal["setup", "required", "info"]
-# Backward-compatible alias (severity only; use StepKind for host/guest/vm_launch/…)
 StepType = StepSeverity
 
-# What the harness actually does for this step
 StepKind = Literal["vm_launch", "vm_stop", "host", "guest", "guest_pull", "callable"]
 
 Scope = Literal["host", "guest", "mixed"]
 
 
-@dataclass
-class Step:
-    """A single executable step within a test.
+def _validate_expected_result_format(name: str, expected_result: str) -> None:
+    result_kind, sep, value = expected_result.partition(":")
+    if result_kind not in ("exit_code", "stdout_contains") or not sep:
+        raise ValueError(
+            f"Step {name!r}: invalid expected_result {expected_result!r}; "
+            f"expected 'exit_code:<int>' or 'stdout_contains:<string>'"
+        )
+    if result_kind == "exit_code":
+        try:
+            int(value)
+        except ValueError as exc:
+            raise ValueError(
+                f"Step {name!r}: exit_code value must be an integer, got {value!r}"
+            ) from exc
 
-    Use ``kind="callable"`` and ``handler`` for Python checks; see
-    :class:`StepContext` and :class:`StepHandlerResult`.
-    Use ``kind="vm_launch"`` / ``kind="vm_stop"`` to start or terminate the guest VM.
+
+@dataclass(kw_only=True)
+class BaseStep:
+    """One executable step returned from :func:`steps` (built via :class:`Step`).
+
+    ``kind`` selects which of ``command`` / ``handler`` / ``guest_src``+``host_dest``
+    are meaningful; :meth:`__post_init__` enforces that only the right fields are set.
     """
 
     name: str
     type: StepSeverity
     kind: StepKind
+    expected_result: str = "exit_code:0"
+    timeout: int = 10
     command: str = ""
-    # For kind == "guest_pull": copy guest_src on the guest to host_dest on the host.
+    handler: str = ""
     guest_src: str = ""
     host_dest: str = ""
-    # For kind == "callable": name of ``(ctx: StepContext) -> StepHandlerResult`` on the test module.
-    handler: str = ""
-    expected_result: str = "exit_code:0"  # e.g. "exit_code:0", "stdout_contains:PASS"
-    timeout: int = 60
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -67,19 +78,23 @@ class Step:
                 raise ValueError(
                     f"Step {self.name!r}: {self.kind} steps must not set guest_src/host_dest"
                 )
+            if self.handler:
+                raise ValueError(
+                    f"Step {self.name!r}: {self.kind} steps must not set handler"
+                )
         elif self.kind == "host":
             if not self.command:
                 raise ValueError(f"Step {self.name!r}: host steps require a non-empty command")
-            if self.guest_src or self.host_dest:
+            if self.guest_src or self.host_dest or self.handler:
                 raise ValueError(
-                    f"Step {self.name!r}: host steps must not set guest_src/host_dest"
+                    f"Step {self.name!r}: host steps must only set command (not handler/paths)"
                 )
         elif self.kind == "guest":
             if not self.command:
                 raise ValueError(f"Step {self.name!r}: guest steps require a non-empty command")
-            if self.guest_src or self.host_dest:
+            if self.guest_src or self.host_dest or self.handler:
                 raise ValueError(
-                    f"Step {self.name!r}: guest steps must not set guest_src/host_dest"
+                    f"Step {self.name!r}: guest steps must only set command (not handler/paths)"
                 )
         elif self.kind == "guest_pull":
             if not self.guest_src:
@@ -89,6 +104,10 @@ class Step:
             if not self.host_dest:
                 raise ValueError(
                     f"Step {self.name!r}: guest_pull steps require host_dest (path on host)"
+                )
+            if self.command or self.handler:
+                raise ValueError(
+                    f"Step {self.name!r}: guest_pull steps must not set command or handler"
                 )
         elif self.kind == "callable":
             if not self.handler:
@@ -101,25 +120,143 @@ class Step:
                     f"Step {self.name!r}: callable steps must not set command, guest_src, or host_dest"
                 )
 
-        if self.kind != "callable" and self.handler:
-            raise ValueError(
-                f"Step {self.name!r}: handler is only allowed when kind is 'callable', not {self.kind!r}"
-            )
+        _validate_expected_result_format(self.name, self.expected_result)
 
-        kind, sep, value = self.expected_result.partition(":")
-        if kind not in ("exit_code", "stdout_contains") or not sep:
-            raise ValueError(
-                f"Step {self.name!r}: invalid expected_result {self.expected_result!r}; "
-                f"expected 'exit_code:<int>' or 'stdout_contains:<string>'"
-            )
-        if kind == "exit_code":
-            try:
-                int(value)
-            except ValueError as exc:
-                raise ValueError(
-                    f"Step {self.name!r}: exit_code value must be an integer, "
-                    f"got {value!r}"
-                ) from exc
+
+@dataclass(kw_only=True)
+class Step:
+    """Fluent factory for :class:`BaseStep`.
+
+    Chained style::
+
+        Step(name="probe", type="required").host(command="snphost ok")
+
+    One-call style (clear signatures in the IDE)::
+
+        Step.for_host(name="probe", type="required", command="snphost ok")
+        Step.for_callable(name="check", type="required", handler="my_fn")
+
+    ``for_*`` names avoid clashing with instance methods ``.host()``, ``.guest()``, …
+    """
+
+    name: str
+    type: StepSeverity
+    expected_result: str = "exit_code:0"
+    timeout: int = 10
+
+    def _common(self) -> dict[str, str | int]:
+        return {
+            "name": self.name,
+            "type": self.type,
+            "expected_result": self.expected_result,
+            "timeout": self.timeout,
+        }
+
+    def host(self, command: str) -> BaseStep:
+        return BaseStep(kind="host", command=command, **self._common())
+
+    def guest(self, command: str) -> BaseStep:
+        return BaseStep(kind="guest", command=command, **self._common())
+
+    def vm_launch(self) -> BaseStep:
+        return BaseStep(kind="vm_launch", **self._common())
+
+    def vm_stop(self) -> BaseStep:
+        return BaseStep(kind="vm_stop", **self._common())
+
+    def guest_pull(self, guest_src: str, host_dest: str) -> BaseStep:
+        return BaseStep(
+            kind="guest_pull",
+            guest_src=guest_src,
+            host_dest=host_dest,
+            **self._common(),
+        )
+
+    def call(self, handler: str) -> BaseStep:
+        return BaseStep(kind="callable", handler=handler, **self._common())
+
+    @classmethod
+    def for_host(
+        cls,
+        name: str,
+        type: StepSeverity,
+        command: str,
+        *,
+        expected_result: str = "exit_code:0",
+        timeout: int = 10,
+    ) -> BaseStep:
+        return cls(
+            name=name, type=type, expected_result=expected_result, timeout=timeout
+        ).host(command)
+
+    @classmethod
+    def for_guest(
+        cls,
+        name: str,
+        type: StepSeverity,
+        command: str,
+        *,
+        expected_result: str = "exit_code:0",
+        timeout: int = 10,
+    ) -> BaseStep:
+        return cls(
+            name=name, type=type, expected_result=expected_result, timeout=timeout
+        ).guest(command)
+
+    @classmethod
+    def for_vm_launch(
+        cls,
+        name: str,
+        type: StepSeverity,
+        *,
+        expected_result: str = "exit_code:0",
+        timeout: int = 10,
+    ) -> BaseStep:
+        return cls(
+            name=name, type=type, expected_result=expected_result, timeout=timeout
+        ).vm_launch()
+
+    @classmethod
+    def for_vm_stop(
+        cls,
+        name: str,
+        type: StepSeverity,
+        *,
+        expected_result: str = "exit_code:0",
+        timeout: int = 10,
+    ) -> BaseStep:
+        return cls(
+            name=name, type=type, expected_result=expected_result, timeout=timeout
+        ).vm_stop()
+
+    @classmethod
+    def for_guest_pull(
+        cls,
+        name: str,
+        type: StepSeverity,
+        guest_src: str,
+        host_dest: str,
+        *,
+        expected_result: str = "exit_code:0",
+        timeout: int = 10,
+    ) -> BaseStep:
+        return cls(
+            name=name, type=type, expected_result=expected_result, timeout=timeout
+        ).guest_pull(guest_src, host_dest)
+
+    @classmethod
+    def for_callable(
+        cls,
+        name: str,
+        type: StepSeverity,
+        handler: str,
+        *,
+        expected_result: str = "exit_code:0",
+        timeout: int = 10,
+    ) -> BaseStep:
+        return cls(
+            name=name, type=type, expected_result=expected_result, timeout=timeout
+        ).call(handler)
 
 
 @dataclass
@@ -177,7 +314,7 @@ class CertificationDefinition:
 class StepResult:
     """Result of executing a single Step."""
 
-    step: Step
+    step: BaseStep
     result: Literal["pass", "fail", "error", "skip"]
     exit_code: int | None = None
     stdout: str | None = None

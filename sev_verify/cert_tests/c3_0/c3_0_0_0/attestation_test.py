@@ -20,7 +20,7 @@ Pulled files and analysis output for this test go under ``ctx.artifact_dir``
 import subprocess
 from pathlib import Path
 
-from sev_verify.models import Step, StepContext, StepHandlerResult
+from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
 from sev_verify.vm_profile import VMProfile, DEFAULT_OVMF_CANDIDATES
 
 vm_profile = VMProfile(
@@ -120,11 +120,11 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
 
     return StepHandlerResult(
         exit_code=0,
-        stdout="Succesfully verified report data and measurement",
+        stdout="Successfully verified report data and measurement",
     )
 
 
-def steps() -> list[Step]:
+def steps() -> list[BaseStep]:
     '''
     Steps to test basic launch and attestation for SEV-SNP guest
 
@@ -134,100 +134,73 @@ def steps() -> list[Step]:
     4. Fetch certificates
     5. Verify certificate chain
     6. Verify attestation report signature
-    7 Verify attestation report fields (measurement and report data)
+    7. Verify attestation report fields (measurement and report data)
     '''
     return [
-        Step(name="Calculate measurement",
-             type="setup",
-             kind="callable",
-             handler="calculate_measurement",
-             timeout=60,
+        Step.for_callable(
+            name="Calculate measurement",
+            type="setup",
+            handler="calculate_measurement",
+            timeout=60,
         ),
-        Step(
+        Step.for_vm_launch(
             name="Launch SEV-SNP guest",
             type="setup",
-            kind="vm_launch",
-            command="",
-            expected_result="exit_code:0",
             timeout=300,
         ),
-        Step(
+        Step.for_guest(
             name="Get attestation report with snpguest",
             type="required",
-            kind="guest",
             command="snpguest report report.bin request.bin --random",
-            expected_result="exit_code:0",
             timeout=300,
         ),
-        Step(
+        Step.for_guest_pull(
             name="Pull report from guest",
             type="required",
-            kind="guest_pull",
             guest_src="report.bin",
             host_dest="report.bin",
-            expected_result="exit_code:0",
             timeout=120,
         ),
-        Step(
+        Step.for_guest_pull(
             name="Pull request file from guest",
             type="required",
-            kind="guest_pull",
             guest_src="request.bin",
             host_dest="request.bin",
-            expected_result="exit_code:0",
             timeout=120,
         ),
-        Step(name="Fetch certificate chain from kds",
-             type="setup",
-             kind="host",
-             command='snpguest fetch ca pem "$SEV_VERIFY_ARTIFACT_DIR" -r "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
-             expected_result="exit_code:0",
-             timeout=60,
+        Step.for_host(
+            name="Fetch certificate chain from kds",
+            type="setup",
+            command='snpguest fetch ca pem "$SEV_VERIFY_ARTIFACT_DIR" -r "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
+            timeout=60,
         ),
-        Step(name="Fetch VCEK from kds",
-             type="setup",
-             kind="host",
-             command='snpguest fetch vcek pem "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
-             expected_result="exit_code:0",
-             timeout=60,
+        Step.for_host(
+            name="Fetch VCEK from kds",
+            type="setup",
+            command='snpguest fetch vcek pem "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
+            timeout=60,
         ),
-        Step(
-            name="Verify certificate chain ",
+        Step.for_host(
+            name="Verify certificate chain",
             type="required",
-            kind="host",
             command='snpguest verify certs "$SEV_VERIFY_ARTIFACT_DIR"',
-            expected_result="exit_code:0",
             timeout=60,
         ),
-        Step(
+        Step.for_host(
             name="Verify report signature and TCB values",
             type="required",
-            kind="host",
             command='snpguest verify attestation "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
-            expected_result="exit_code:0",
             timeout=60,
         ),
-        Step(
-            name="Verify report signature and TCB values",
-            type="required",
-            kind="host",
-            command='snpguest verify attestation "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
-            expected_result="exit_code:0",
-            timeout=60,
-        ),
-        Step(
+        Step.for_callable(
             name="Verify Request data and Measurement",
             type="required",
-            kind="callable",
             handler="verify_report_fields",
             timeout=30,
         ),
-        Step(
+        Step.for_vm_stop(
             name="Stop VM",
             type="info",
-            kind="vm_stop",
-            command="",
-            expected_result="exit_code:0",
             timeout=60,
         ),
     ]
