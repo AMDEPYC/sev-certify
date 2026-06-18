@@ -50,6 +50,9 @@ class BaseStep:
     handler: str = ""
     guest_src: str = ""
     host_dest: str = ""
+    # Diagnostic hints shown on failure: list of (grep_pattern, message) pairs.
+    # If *grep_pattern* appears in stderr or stdout, *message* is printed as a hint.
+    hints: list[tuple[str, str]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -121,6 +124,11 @@ class BaseStep:
                 )
 
         _validate_expected_result_format(self.name, self.expected_result)
+
+    def add_hint(self, pattern: str, message: str) -> "BaseStep":
+        """Add a diagnostic hint and return self for chaining."""
+        self.hints.append((pattern, message))
+        return self
 
 
 @dataclass(kw_only=True)

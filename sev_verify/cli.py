@@ -440,6 +440,12 @@ def execute_test(
                     gutter = "   " if is_last else "│  "
                     for line in sr.stderr.strip().splitlines()[:5]:
                         _flush(f"   {gutter}   {line}")
+                combined = (sr.stderr or "") + (sr.stdout or "")
+                for pattern, hint_msg in step.hints:
+                    if pattern in combined:
+                        gutter = "   " if is_last else "│  "
+                        _flush(f"   {gutter}   [Hint] {hint_msg}")
+                        break
                 if step.type == "setup":
                     overall = "fail"
                     for j, remaining in enumerate(steps[i + 1:], i + 1):

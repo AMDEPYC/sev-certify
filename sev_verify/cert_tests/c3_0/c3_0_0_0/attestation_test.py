@@ -147,6 +147,10 @@ def steps() -> list[BaseStep]:
             name="Launch SEV-SNP guest",
             type="setup",
             timeout=300,
+        ).add_hint(
+            "Address already in use",
+            "A previous VM may still be running. "
+            "Try: sudo kill $(pgrep -f 'qemu.*guest-cid')",
         ),
         Step.for_guest(
             name="Get attestation report with snpguest",
@@ -179,7 +183,7 @@ def steps() -> list[BaseStep]:
             type="setup",
             command='snpguest fetch vcek pem "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
             timeout=60,
-        ),
+        ).add_hint("429", "Rate limited by KDS, re-run in a minute"),
         Step.for_host(
             name="Verify certificate chain",
             type="required",
