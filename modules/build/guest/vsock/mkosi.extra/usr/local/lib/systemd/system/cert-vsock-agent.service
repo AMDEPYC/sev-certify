@@ -1,0 +1,13 @@
+[Unit]
+Description=Certification test guest vsock command agent
+After=network.target
+ConditionPathExists=/usr/local/lib/cert-agent/vsock_exec.py
+
+[Service]
+Type=simple
+ExecStart=python3 /usr/local/lib/cert-agent/vsock_exec.py --port 5000
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
