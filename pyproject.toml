@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sev-verify"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[project.scripts]
+sev-verify = "sev_verify.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sev_verify*"]
+
+[tool.setuptools.package-data]
+sev_verify = ["**/*.toml"]

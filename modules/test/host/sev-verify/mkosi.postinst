@@ -1,0 +1,14 @@
+#!/bin/bash
+set -eux
+
+# $SRCDIR is set by mkosi from BuildSources (repo root mapped as "sev-certify").
+# Copy only what pip needs into the image, install with the image's own
+# pip (so the module lands in the correct site-packages), then clean up.
+staging=/buildroot/opt/sev-verify-src
+mkdir -p "$staging"
+cp    "$SRCDIR/sev-certify/pyproject.toml" "$staging/"
+cp -r "$SRCDIR/sev-certify/sev_verify"    "$staging/"
+
+mkosi-chroot pip3 install --break-system-packages /opt/sev-verify-src
+
+rm -rf "$staging"

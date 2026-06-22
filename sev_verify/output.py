@@ -126,13 +126,14 @@ def write_markdown(
     """Write human-readable Markdown certification report."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    result_label = "PASS" if cr.result == "pass" else "FAIL"
     lines: list[str] = []
     w = lines.append
 
-    w(f"## SEV Certification {cr.certification.version} -- {result_label}")
+    if certified_level:
+        w(f"# Achieved Certification Level {certified_level}")
+    else:
+        w("# Failed to Achieve a Certification Level")
     w("")
-    w(f"**Certified level:** {certified_level or 'none'}")
     w(f"**Started:** {cr.started_at}")
     w(f"**Completed:** {cr.completed_at}")
     w("")
@@ -149,11 +150,11 @@ def write_markdown(
             continue
         w(f"### Level {level}")
         w("")
-        w("| Test | Scope | Result |")
-        w("|------|-------|--------|")
+        w("| Test | Description | Result |")
+        w("|------|-------------|--------|")
         for tr in trs:
             icon = _RESULT_ICON.get(tr.result, tr.result)
-            w(f"| {tr.test.name} | {tr.test.scope} | {icon} |")
+            w(f"| {tr.test.name} | {tr.test.description} | {icon} |")
             if tr.result != "pass":
                 failures.append(tr)
         w("")
@@ -161,11 +162,11 @@ def write_markdown(
     if unlabeled:
         w("### Other Tests")
         w("")
-        w("| Test | Scope | Result |")
-        w("|------|-------|--------|")
+        w("| Test | Description | Result |")
+        w("|------|-------------|--------|")
         for tr in unlabeled:
             icon = _RESULT_ICON.get(tr.result, tr.result)
-            w(f"| {tr.test.name} | {tr.test.scope} | {icon} |")
+            w(f"| {tr.test.name} | {tr.test.description} | {icon} |")
             if tr.result != "pass":
                 failures.append(tr)
         w("")

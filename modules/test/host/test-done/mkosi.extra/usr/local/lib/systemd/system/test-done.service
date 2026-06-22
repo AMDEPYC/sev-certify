@@ -2,6 +2,9 @@
 Description=Barrier that triggers test services
 DefaultDependencies=no
 
+Requires=sev-verify.service
+After=sev-verify.service
+
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/true
