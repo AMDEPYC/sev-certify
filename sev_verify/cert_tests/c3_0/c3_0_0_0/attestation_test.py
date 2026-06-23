@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 
 from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
-from sev_verify.vm_profile import VMProfile, DEFAULT_OVMF_CANDIDATES
+from sev_verify.vm_profile import VMProfile, VMProfileError
 
 vm_profile = VMProfile(
     image_path="",
@@ -39,26 +39,13 @@ def calculate_measurement(ctx: StepContext) -> StepHandlerResult:
     measurement_file = ctx.artifact_dir / "guest_measurement.txt"
     ovmf_path = None
 
-    if ctx.cli_ovmf_path:
-        o = Path(ctx.cli_ovmf_path)
-        if not o.is_file():
-            return StepHandlerResult(
-                exit_code=1,
-                stderr=f"CLI OVMF image not found: {o}",
-            )
-        ovmf_path = o
-    else:
-        for path in DEFAULT_OVMF_CANDIDATES:
-            if Path(path).is_file():
-                ovmf_path = path
-
-    if not ovmf_path:
+    try:
+        ovmf_path = Path(ctx.profile.resolved_ovmf_path())
+    except VMProfileError as e:
         return StepHandlerResult(
             exit_code=1,
-            stderr=(
-                "No OVMF found. Install an AMD SEV OVMF package or pass --ovmf PATH.\n"
-                "Checked:\n" + "\n".join(DEFAULT_OVMF_CANDIDATES)
-            ))
+            stderr=str(e),
+        )
 
     result = subprocess.run(
         [

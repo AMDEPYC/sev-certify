@@ -77,7 +77,7 @@ def _validate_host_data(host_data: str) -> None:
 @dataclass(frozen=True)
 class VMProfile:
     """Launch-time configuration for an SEV-SNP guest."""
-    # QEMU varfiables with non-default values
+    # QEMU variables with non-default values
     image_path: str
     # QEMU variables
     qemu_binary: str = DEFAULT_QEMU_BINARY
@@ -94,7 +94,7 @@ class VMProfile:
     vsock_connect_timeout: float = 10.0
     vsock_command_timeout: float = 300.0
     vsock_max_response_bytes: int = 16 * 1024 * 1024
-    # SEV-SNP varable parameters
+    # SEV-SNP variable parameters
     host_data: str | None = None
     policy: str | int | None = None
     auth_key_enabled: bool = False
@@ -127,7 +127,7 @@ class VMProfile:
 
     def resolved_ovmf_path(self) -> str:
         """"
-        Verify provided OVMF path is presnet.
+        Verify provided OVMF path is present.
 
         If not, look for OVMF on default locations.
         """

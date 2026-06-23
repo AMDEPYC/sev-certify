@@ -1,6 +1,7 @@
 # sev_verify
 
 Host-side testing harness for SEV-SNP certification. Reads TOML manifests that declare which tests to run, imports per-test Python modules that define executable steps, and orchestrates execution across host and guest environments.
+sev-verify uses a non-secure vsock channel between the host and the guest, which is launched as a CVM. Given the purpose of sev-certify, this is acceptable. The vsock channel properties are properties of the guest and the guest is purpose-built for sev-certify. As built, there is no incentive for an attacker to take advantage of the security weakness of the vsock channel.
 
 ## Usage
 

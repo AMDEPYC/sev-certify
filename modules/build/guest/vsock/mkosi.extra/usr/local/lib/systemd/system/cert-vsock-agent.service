@@ -1,6 +1,5 @@
 [Unit]
 Description=Certification test guest vsock command agent
-After=network.target
 ConditionPathExists=/usr/local/lib/cert-agent/vsock_exec.py
 
 [Service]
