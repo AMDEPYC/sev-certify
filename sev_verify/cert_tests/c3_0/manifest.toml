@@ -1,0 +1,20 @@
+version = "3.0"
+description = "SEV 3.0 Tests (AMD EPYC 7003+)"
+
+# ── Level 3.0.0-0 ───────────────────────────────────────────
+
+[[tests]]
+name = "attestation-test"
+description = "Launch an SEV-SNP guest and verify attestation report"
+module = "cert_tests.c3_0.c3_0_0_0.attestation_test"
+scope = "mixed"
+level = "3.0.0-0"
+
+# ── Level 3.0.0-1 ───────────────────────────────────────────
+
+[[tests]]
+name = "snphost-config-commit"
+description = "Test SNP_CONFIG and SNP_COMMIT host commands"
+module = "cert_tests.c3_0.c3_0_0_1.snphost_config_commit"
+scope = "host"
+level = "3.0.0-1"

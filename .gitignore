@@ -1,3 +1,9 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+./build/
+
 **/target/
 /*/tools/
 /*/image
@@ -13,3 +19,6 @@ images/*/*.initrd
 images/*/*.vmlinuz
 images/*/guest-*
 images/*/host-*
+
+results/
+artifacts/

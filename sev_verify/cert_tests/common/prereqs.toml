@@ -1,0 +1,8 @@
+## Prerequisites — run before every certification level.
+## If any required step here fails, the certification is skipped.
+
+[[tests]]
+name = "Verify SNP"
+description = "Verify SEV-SNP is enabled and functional on the host and the right components are present"
+module = "cert_tests.common.snp_ok"
+scope = "host"

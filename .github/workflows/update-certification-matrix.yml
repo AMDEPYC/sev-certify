@@ -131,7 +131,7 @@ jobs:
                 
                 // Delete and recreate branch if no PR exists, otherwise update it
                 if (existingPRs.length === 0) {
-                  await github.rest.git.deleteRef({ ...repo, ref: `heads/${branchName}` }).catch(e => { if (e.status !== 404) throw e; });
+                  await github.rest.git.deleteRef({ ...repo, ref: `heads/${branchName}` }).catch(e => { if (e.status !== 404 && e.status !== 422) throw e; });
                   await github.rest.git.createRef({ ...repo, ref: `refs/heads/${branchName}`, sha: refData.object.sha });
                 } else {
                   await github.rest.git.updateRef({ ...repo, ref: `heads/${branchName}`, sha: refData.object.sha, force: false }).catch(() => {});
