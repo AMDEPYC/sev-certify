@@ -49,15 +49,15 @@ if [ -f "${ID_BLOCK_FILE}" ] && [ -f "${ID_AUTH_FILE}" ]; then
     ID_AUTH_B64=$(cat "${ID_AUTH_FILE}")
     # Extract policy from id-block (bytes 88-95, LE u64) so LAUNCH_START and
     # LAUNCH_FINISH see the same value; without this QEMU uses its own default.
-    POLICY=$(base64 -d "${ID_BLOCK_FILE}" | python3 -c "
-        import sys
-        d = sys.stdin.buffer.read()
-        n = len(d)
-        if n != 96:
-            print(f'ERROR: id-block decoded to {n} bytes (expected 96)', file=sys.stderr)
-            sys.exit(1)
-        print(hex(int.from_bytes(d[88:96], 'little')))
-    ")
+    # Decode to a flat hex string (96 bytes → 192 hex chars), validate size,
+    # then reverse the 8 byte-pairs at offset 176 to convert LE→BE for printf.
+    ID_BLOCK_HEX=$(base64 -d "${ID_BLOCK_FILE}" | od -An -tx1 | tr -d ' \n')
+    if [ "${#ID_BLOCK_HEX}" -ne 192 ]; then
+        echo "ERROR: id-block decoded to $((${#ID_BLOCK_HEX}/2)) bytes (expected 96)" >&2
+        exit 1
+    fi
+    POLICY_LE="${ID_BLOCK_HEX:176:16}"
+    POLICY=$(printf '0x%x' "0x${POLICY_LE:14:2}${POLICY_LE:12:2}${POLICY_LE:10:2}${POLICY_LE:8:2}${POLICY_LE:6:2}${POLICY_LE:4:2}${POLICY_LE:2:2}${POLICY_LE:0:2}")
     SEV_SNP_OBJECT="${SEV_SNP_OBJECT},policy=${POLICY},id-block=${ID_BLOCK_B64},id-auth=${ID_AUTH_B64}"
     dbg "ID block: ${ID_BLOCK_FILE} (present)"
     dbg "ID auth:  ${ID_AUTH_FILE} (present)"
