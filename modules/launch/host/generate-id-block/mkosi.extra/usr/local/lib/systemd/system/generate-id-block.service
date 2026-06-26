@@ -1,5 +1,5 @@
 [Unit]
-Description=Patch and sign id-block.b64, generating id-auth.b64
+Description=Generate id-block.b64 and id-auth.b64 for guest launch
 DefaultDependencies=no
 After=calculate-measurement.service
 Wants=calculate-measurement.service
@@ -7,6 +7,13 @@ Before=launch-guest.service
 
 [Service]
 Type=oneshot
+# ID block metadata — override any of these to change what is embedded in the
+# signed block without modifying the script.  Defaults match the benchmark
+# platform configuration documented in DESIGN.md.
+Environment=ID_BLOCK_FAMILY_ID=0000000000000000000000000000fad0
+Environment=ID_BLOCK_IMAGE_ID=0000000000000000000000000000aed0
+Environment=ID_BLOCK_GUEST_SVN=48
+Environment=ID_BLOCK_POLICY=0xb0000
 ExecStart=/usr/local/lib/scripts/generate_id_block.py
 StandardOutput=journal+console
 StandardError=journal+console
