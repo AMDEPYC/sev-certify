@@ -1,42 +1,45 @@
 #!/usr/bin/env python3
-"""Patch the ld field of id-block.b64 with the guest measurement, sign it,
-and generate id-auth.b64 with the signature and ephemeral ID key."""
+"""Generate an ID block and auth block for the current guest measurement.
 
-import base64
+Generates two ephemeral P-384 key pairs at runtime (id key and author key),
+writes them to temporary files, invokes snpguest to build and sign the blocks,
+then removes the temporary key files.  No private key material is persisted.
+
+Metadata (family_id, image_id, guest_svn, policy) is read from environment
+variables with defaults chosen for the benchmark test platform:
+  ID_BLOCK_FAMILY_ID  — 32 hex chars (default: 0000000000000000000000000000fad0)
+  ID_BLOCK_IMAGE_ID   — 32 hex chars (default: 0000000000000000000000000000aed0)
+  ID_BLOCK_GUEST_SVN  — decimal integer  (default: 48)
+  ID_BLOCK_POLICY     — decimal or 0x-prefixed hex (default: 0xb0000)
+"""
+
 import os
-import struct
+import subprocess
 import sys
+import tempfile
 
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+)
 
 MEASUREMENT_FILE = "/usr/local/lib/guest-image/guest_measurement.txt"
 ID_BLOCK_FILE = "/usr/local/lib/guest-image/id-block.b64"
 ID_AUTH_FILE = "/usr/local/lib/guest-image/id-auth.b64"
 
-# AMD SEV-SNP ABI constants
-ALGO_ECDSA_P384_SHA384 = 1
-CURVE_P384 = 2
+# Metadata defaults (match the committed template values documented in DESIGN.md)
+DEFAULT_FAMILY_ID = "0000000000000000000000000000fad0"
+DEFAULT_IMAGE_ID = "0000000000000000000000000000aed0"
+DEFAULT_GUEST_SVN = "48"
+DEFAULT_POLICY = "0xb0000"
 
 
-def int_to_le(value, length):
-    """Convert an integer to little-endian bytes, zero-padded to length."""
-    return value.to_bytes(length, "big")[::-1]
-
-
-def build_ecdsa_sig(r_int, s_int):
-    """Build SEV_ECDSA_SIG (512 bytes): r[72] + s[72] + reserved[368]."""
-    r = int_to_le(r_int, 48).ljust(72, b"\x00")
-    s = int_to_le(s_int, 48).ljust(72, b"\x00")
-    return r + s + b"\x00" * 368
-
-
-def build_ecdsa_pub_key(pub_numbers):
-    """Build SEV_ECDSA_PUB_KEY (1028 bytes): curve[4] + qx[72] + qy[72] + reserved[880]."""
-    qx = int_to_le(pub_numbers.x, 48).ljust(72, b"\x00")
-    qy = int_to_le(pub_numbers.y, 48).ljust(72, b"\x00")
-    return struct.pack("<I", CURVE_P384) + qx + qy + b"\x00" * 880
+def write_pem_key(key, path):
+    pem = key.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption())
+    with open(path, "wb") as f:
+        f.write(pem)
 
 
 def main():
@@ -47,7 +50,8 @@ def main():
         sys.exit(0)
 
     # Read measurement (format: 0x<96 hex chars> = 48 raw bytes)
-    measurement_text = open(MEASUREMENT_FILE).read().strip()
+    with open(MEASUREMENT_FILE) as f:
+        measurement_text = f.read().strip()
     hex_str = measurement_text.removeprefix("0x")
     if len(hex_str) != 96:
         print(
@@ -55,48 +59,53 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
-    ld = bytes.fromhex(hex_str)
-
-    # Decode existing ID block template, patch ld at offset 0
-    id_block = bytearray(base64.b64decode(open(ID_BLOCK_FILE).read().strip()))
-    if len(id_block) != 96:
-        print(
-            f"ERROR: unexpected id-block length {len(id_block)} bytes (expected 96)",
-            file=sys.stderr,
-        )
+    try:
+        bytes.fromhex(hex_str)
+    except ValueError as e:
+        print(f"ERROR: measurement is not valid hex: {e}", file=sys.stderr)
         sys.exit(1)
-    id_block[0:48] = ld
+    measurement = f"0x{hex_str}"
 
-    # Generate ephemeral P-384 key pair
-    private_key = ec.generate_private_key(ec.SECP384R1())
-    public_key = private_key.public_key()
+    # Read metadata from environment, falling back to defaults
+    family_id = os.environ.get("ID_BLOCK_FAMILY_ID", DEFAULT_FAMILY_ID)
+    image_id = os.environ.get("ID_BLOCK_IMAGE_ID", DEFAULT_IMAGE_ID)
+    guest_svn = os.environ.get("ID_BLOCK_GUEST_SVN", DEFAULT_GUEST_SVN)
+    policy = os.environ.get("ID_BLOCK_POLICY", DEFAULT_POLICY)
 
-    # Sign the patched ID block
-    der_sig = private_key.sign(bytes(id_block), ec.ECDSA(hashes.SHA384()))
-    r_int, s_int = decode_dss_signature(der_sig)
+    # Generate two ephemeral P-384 key pairs; write to temp files for snpguest
+    id_key = ec.generate_private_key(ec.SECP384R1())
+    auth_key = ec.generate_private_key(ec.SECP384R1())
 
-    # Build ID_AUTH_INFO_STRUCT (4096 bytes)
-    #   0x000: id_key_algo (u32)
-    #   0x004: auth_key_algo (u32)
-    #   0x008: reserved (56 bytes)
-    #   0x040: id_block_sig (512 bytes)
-    #   0x240: id_key (1028 bytes)
-    #   0x644: reserved (60 bytes)
-    #   0x680: author_key_sig (512 bytes, zeros)
-    #   0x880: author_key (1028 bytes, zeros)
-    #   0xC84: reserved (892 bytes)
-    id_auth = bytearray(4096)
-    struct.pack_into("<I", id_auth, 0x000, ALGO_ECDSA_P384_SHA384)  # id_key_algo
-    # auth_key_algo = 0 (no author key), already zero
-    id_auth[0x040 : 0x040 + 512] = build_ecdsa_sig(r_int, s_int)
-    id_auth[0x240 : 0x240 + 1028] = build_ecdsa_pub_key(public_key.public_numbers())
+    with tempfile.TemporaryDirectory() as tmpdir:
+        id_key_path = os.path.join(tmpdir, "id-key.pem")
+        auth_key_path = os.path.join(tmpdir, "auth-key.pem")
+        write_pem_key(id_key, id_key_path)
+        write_pem_key(auth_key, auth_key_path)
 
-    # Write outputs
-    open(ID_BLOCK_FILE, "w").write(base64.b64encode(bytes(id_block)).decode())
-    open(ID_AUTH_FILE, "w").write(base64.b64encode(bytes(id_auth)).decode())
+        cmd = [
+            "snpguest", "generate", "id-block",
+            id_key_path,
+            auth_key_path,
+            measurement,
+            "--family-id", family_id,
+            "--image-id", image_id,
+            "--svn", guest_svn,
+            "--policy", policy,
+            "--id-block-file", ID_BLOCK_FILE,
+            "--auth-info-file", ID_AUTH_FILE,
+        ]
 
-    print(f"Patched {ID_BLOCK_FILE} with measurement ld={hex_str[:16]}...")
-    print(f"Generated {ID_AUTH_FILE} with ephemeral ID key signature")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Temp files are removed when the TemporaryDirectory context exits
+
+    if result.returncode != 0:
+        print(f"ERROR: snpguest failed (exit {result.returncode})", file=sys.stderr)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Generated {ID_BLOCK_FILE} and {ID_AUTH_FILE} for measurement {hex_str[:16]}...")
+    print(f"  family_id={family_id} image_id={image_id} svn={guest_svn} policy={policy}")
 
 
 if __name__ == "__main__":
