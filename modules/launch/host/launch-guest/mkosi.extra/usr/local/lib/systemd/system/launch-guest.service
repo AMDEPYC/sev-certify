@@ -1,8 +1,8 @@
 [Unit]
 Description=Launch a SNP enabled guest using qemu, the embeded guest image and the appropriate QEMU and OVMF, verify it launched.
 DefaultDependencies=no
-After=calculate-measurement.service
-Wants=calculate-measurement.service
+After=calculate-measurement.service generate-id-block.service
+Wants=calculate-measurement.service generate-id-block.service
 
 [Service]
 Type=simple
