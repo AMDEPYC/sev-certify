@@ -91,8 +91,8 @@ def main():
             "--image-id", image_id,
             "--svn", guest_svn,
             "--policy", policy,
-            "--id-block-file", ID_BLOCK_FILE,
-            "--auth-info-file", ID_AUTH_FILE,
+            "--id-file", ID_BLOCK_FILE,
+            "--auth-file", ID_AUTH_FILE,
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True)
