@@ -30,8 +30,8 @@ ID_BLOCK_FILE = "/usr/local/lib/guest-image/id-block.b64"
 ID_AUTH_FILE = "/usr/local/lib/guest-image/id-auth.b64"
 
 # Metadata defaults (match the committed template values documented in DESIGN.md)
-DEFAULT_FAMILY_ID = "0000000000000000000000000000fad0"
-DEFAULT_IMAGE_ID = "0000000000000000000000000000aed0"
+DEFAULT_FAMILY_ID = "sev-certify-fam0"
+DEFAULT_IMAGE_ID = "sev-certify-img0"
 DEFAULT_GUEST_SVN = "48"
 DEFAULT_POLICY = "0xb0000"
 
