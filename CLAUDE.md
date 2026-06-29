@@ -50,8 +50,8 @@ Configurable via environment variables in `generate-id-block.service` (override 
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ID_BLOCK_FAMILY_ID` | `0000000000000000000000000000fad0` | 32 hex chars |
-| `ID_BLOCK_IMAGE_ID` | `0000000000000000000000000000aed0` | 32 hex chars |
+| `ID_BLOCK_FAMILY_ID` | `sev-certify-fam0` | 16 ASCII chars; snpguest ≤v0.10.0 passes the raw string bytes directly |
+| `ID_BLOCK_IMAGE_ID` | `sev-certify-img0` | 16 ASCII chars; same constraint as family ID |
 | `ID_BLOCK_GUEST_SVN` | `48` | Decimal |
 | `ID_BLOCK_POLICY` | `0xb0000` | Bits 16 (SMT), 17 (MBO), 19 (DEBUG) |
 

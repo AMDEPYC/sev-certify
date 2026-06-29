@@ -78,10 +78,18 @@ jobs:
             release: 41
           - distro: ubuntu
             release: 25.04
+          - distro: debian
+            release: 13
           - distro: centos
             release: 10
+          - distro: rocky
+            release: 10
+          - distro: debian
+            release: forky
           - distro: ubuntu
             release: "25.10"
+          - distro: ubuntu
+            release: "26.04"
 
     steps:
       - name: Checkout
