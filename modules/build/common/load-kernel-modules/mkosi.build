@@ -4,7 +4,7 @@ set -eux
 os_name=$(grep '^ID=' /buildroot/etc/os-release | cut -d'=' -f2 | tr -d '"')
 
 case "$os_name" in
-  debian|ubuntu|centos)
+  debian|ubuntu|centos|opensuse-leap)
     echo "Applying module configuration for $os_name"
     ;;
   *)

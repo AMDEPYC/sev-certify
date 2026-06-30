@@ -13,7 +13,7 @@ fi
 package="$1"
 
 declare -A package_managers
-package_managers=( ["fedora"]="rpm" ["ubuntu"]="apt" ["debian"]="apt" ["centos"]="rpm" ["rocky"]="rpm" )
+package_managers=( ["fedora"]="rpm" ["ubuntu"]="apt" ["debian"]="apt" ["centos"]="rpm" ["rocky"]="rpm" ["opensuse-leap"]="zypper")
 
 os_name=$(grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
 os_package_manager=${package_managers[${os_name}]}
@@ -25,6 +25,10 @@ case "$os_package_manager" in
     ;;
   rpm)
     package_version=$(rpm -q --queryformat '%{VERSION}-%{RELEASE}' ${package} 2>/dev/null || echo "" )
+    echo -e "${package_version}"
+    ;;
+  zypper)
+    package_version=$(zypper info package ${package} 2>/dev/null | awk '/Version/ {print $3}' || echo "")
     echo -e "${package_version}"
     ;;
   *)

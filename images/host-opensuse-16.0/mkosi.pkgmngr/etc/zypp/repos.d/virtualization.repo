@@ -1,0 +1,8 @@
+[Virtualization]
+name=Virtualization (16.0)
+enabled=1
+autorefresh=1
+baseurl=https://download.opensuse.org/repositories/Virtualization/16.0/
+gpgcheck=1
+gpgkey=https://download.opensuse.org/repositories/Virtualization/16.0/repodata/repomd.xml.key
+priority=90

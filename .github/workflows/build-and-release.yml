@@ -79,6 +79,8 @@ jobs:
             release: "25.10"
           - distro: ubuntu
             release: "26.04"
+          - distro: opensuse
+            release: "16.0"
 
     steps:
       - name: Checkout
@@ -86,7 +88,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo sed -i 's/noble/plucky/g' /etc/apt/sources.list.d/ubuntu.sources || true
+          sudo sed -i 's/noble/resolute/g' /etc/apt/sources.list.d/ubuntu.sources || true
           sudo apt update
           sudo apt install -y mkosi
 

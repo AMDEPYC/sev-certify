@@ -7,7 +7,7 @@ MEASUREMENT_FILE="/usr/local/lib/guest-image/guest_measurement.txt"
 
 # Check which OVMF binary to use
 OVMF_PATH=""
-for path in /usr/share/ovmf/OVMF.amdsev.fd /usr/share/edk2/ovmf/OVMF.amdsev.fd; do
+for path in /usr/share/ovmf/OVMF.amdsev.fd /usr/share/edk2/ovmf/OVMF.amdsev.fd /usr/share/qemu/ovmf-x86_64-sev.bin; do
   if [ -f "$path" ]; then
     OVMF_PATH="$path"
     break
