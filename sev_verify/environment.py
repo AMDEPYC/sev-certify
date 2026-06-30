@@ -1,10 +1,12 @@
-"""Detect host environment versions (QEMU, kernel, OVMF) for reporting."""
+"""Detect host environment versions (QEMU, kernel, OVMF, OS) for reporting."""
 
 from __future__ import annotations
 
 import platform
 import shutil
 import subprocess
+
+from .os_info import get_host_os_info
 
 
 def _get_qemu_version(binary: str) -> str | None:
@@ -78,9 +80,13 @@ def detect_environment(
 
     All detection is best-effort: failures produce ``None`` values.
     """
+    host_os = get_host_os_info()
     return {
         "qemu_version": _get_qemu_version(qemu_binary),
         "kernel_version": _get_kernel_version(),
         "ovmf_version": _get_ovmf_version(ovmf_path) if ovmf_path else None,
         "ovmf_path": ovmf_path,
+        "host_os_name": host_os.get("host_os_name"),
+        "host_os_release": host_os.get("host_os_release"),
+        "host_os_pretty_name": host_os.get("host_os_pretty_name"),
     }

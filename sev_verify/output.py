@@ -147,8 +147,22 @@ def write_markdown(
 
     if environment:
         env_lines: list[str] = []
+        if environment.get("host_os_pretty_name"):
+            env_lines.append(f"- **Host OS:** {environment['host_os_pretty_name']}")
+        elif environment.get("host_os_name"):
+            host_os = environment["host_os_name"]
+            if environment.get("host_os_release"):
+                host_os = f"{host_os} {environment['host_os_release']}"
+            env_lines.append(f"- **Host OS:** {host_os}")
         if environment.get("kernel_version"):
             env_lines.append(f"- **Host kernel:** {environment['kernel_version']}")
+        if environment.get("guest_os_pretty_name"):
+            env_lines.append(f"- **Guest OS:** {environment['guest_os_pretty_name']}")
+        elif environment.get("guest_os_name"):
+            guest_os = environment["guest_os_name"]
+            if environment.get("guest_os_release"):
+                guest_os = f"{guest_os} {environment['guest_os_release']}"
+            env_lines.append(f"- **Guest OS:** {guest_os}")
         if environment.get("qemu_version"):
             env_lines.append(f"- **QEMU:** {environment['qemu_version']}")
         if environment.get("ovmf_version"):
