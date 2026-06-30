@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+
+if [[ "$1" == "final" ]]; then
+    zypper --non-interactive --gpg-auto-import-keys refresh Virtualization
+    zypper --non-interactive install --allow-vendor-change --from Virtualization qemu-ovmf-x86_64
+fi
