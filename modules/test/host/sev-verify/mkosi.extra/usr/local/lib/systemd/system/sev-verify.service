@@ -1,0 +1,12 @@
+[Unit]
+Description=Run sev-verify certification tests
+DefaultDependencies=no
+Wants=system.target
+After=system.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/scripts/run-sev-verify.sh
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=600

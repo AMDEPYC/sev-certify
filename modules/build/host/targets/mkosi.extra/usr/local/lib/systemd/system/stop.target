@@ -4,8 +4,8 @@
 [Unit]
 Description=Stop stage
 
-After=report.target
-Requires=report.target
+After=test.target
+Requires=test.target
 
 Wants=stop-done.service
 After=stop-done.service

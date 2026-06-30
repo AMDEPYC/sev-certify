@@ -1,11 +1,11 @@
-# Target reached when all the tests are complete.
+# Target reached when sev-verify tests are complete.
 # Job services should use: WantedBy=test.target
 
 [Unit]
 Description=test stage
 
-After=launch.target
-Requires=launch.target
+After=system.target
+Requires=system.target
 
 Wants=test-done.service
 After=test-done.service
