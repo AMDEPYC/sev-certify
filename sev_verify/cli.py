@@ -175,6 +175,7 @@ def _filter_tests(
         description=cert.description,
         tests=filtered,
         all_levels=list(cert.all_levels),  # defensive copy
+        max_certification_level=cert.max_certification_level,
     )
 
 
@@ -194,10 +195,15 @@ def load_manifest(toml_path: Path) -> CertificationDefinition:
 
     tests = _load_test_entries(toml_path, data)
 
+    max_cert_level = data.get("max_certification_level")
+    if max_cert_level is not None:
+        max_cert_level = str(max_cert_level)
+
     return CertificationDefinition(
         version=str(data["version"]),
         description=str(data["description"]),
         tests=tests,
+        max_certification_level=max_cert_level,
     )
 
 
@@ -489,6 +495,8 @@ def execute_certification(
 
     _section(f"Certification {cert.version}")
     _flush(f"   {cert.description}")
+    if cert.max_certification_level:
+        _flush(f"   Max certification level: {cert.max_certification_level}")
     _flush("")
 
     current_level = None
@@ -531,6 +539,10 @@ def _highest_certified_level(cr: CertificationResult) -> str | None:
     achieved only if every prior level was also run and passed.
     Returns None if no contiguous chain of passing levels exists
     (e.g. level 0 was skipped or failed).
+
+    When ``max_certification_level`` is set on the certification, the
+    result is clamped so it never exceeds that cap — even if higher
+    levels ran and passed.
     """
     # Build a map: level -> list of results for tests at that level
     results_by_level: dict[str, list[str]] = {}
@@ -548,6 +560,14 @@ def _highest_certified_level(cr: CertificationResult) -> str | None:
             # Level had a failure — chain broken
             break
         highest = level
+
+    # Clamp to max_certification_level if set.
+    cap = cr.certification.max_certification_level
+    if highest is not None and cap is not None:
+        all_levels = cr.certification.all_levels
+        if all_levels.index(cap) < all_levels.index(highest):
+            highest = cap
+
     return highest
 
 

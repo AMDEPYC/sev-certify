@@ -302,6 +302,9 @@ class CertificationDefinition:
     tests: list[TestDefinition] = field(default_factory=list)
     # Ordered unique levels from the original manifest (preserved across filtering for chain validation)
     all_levels: list[str] = field(default_factory=list)
+    # Optional cap on the highest achievable certification level.
+    # Tests above this level still run but the final certified level is clamped.
+    max_certification_level: str | None = None
 
     def __post_init__(self) -> None:
         if not self.version:
@@ -313,6 +316,13 @@ class CertificationDefinition:
                 if t.level and t.level not in seen:
                     seen.add(t.level)
                     self.all_levels.append(t.level)
+        # Validate max_certification_level against known levels.
+        if self.max_certification_level is not None:
+            if self.all_levels and self.max_certification_level not in self.all_levels:
+                raise ValueError(
+                    f"max_certification_level {self.max_certification_level!r} "
+                    f"is not a valid level; expected one of {self.all_levels}"
+                )
 
 
 # ── Runtime result models (populated during execution) ──────────

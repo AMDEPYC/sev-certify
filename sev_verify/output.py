@@ -91,12 +91,13 @@ def write_json(
             "tests": [_test_dict(tr) for tr in trs],
         })
 
-    doc = {
+    doc: dict[str, Any] = {
         "schema_version": "1.0",
         "certification_version": cr.certification.version,
         "description": cr.certification.description,
         "result": cr.result,
         "certified_level": certified_level,
+        "max_certification_level": cr.certification.max_certification_level,
         "started_at": cr.started_at,
         "completed_at": cr.completed_at,
         "levels": levels_out,
@@ -133,6 +134,8 @@ def write_markdown(
     w(f"## SEV Certification {cr.certification.version} -- {result_label}")
     w("")
     w(f"**Certified level:** {certified_level or 'none'}")
+    if cr.certification.max_certification_level:
+        w(f"**Max certification level:** {cr.certification.max_certification_level}")
     w(f"**Started:** {cr.started_at}")
     w(f"**Completed:** {cr.completed_at}")
     w("")
