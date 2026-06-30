@@ -131,7 +131,6 @@ def write_markdown(
     """Write human-readable Markdown certification report."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    result_label = "PASS" if cr.result == "pass" else "FAIL"
     lines: list[str] = []
     w = lines.append
 

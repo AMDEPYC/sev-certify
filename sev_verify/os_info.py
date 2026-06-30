@@ -35,7 +35,7 @@ def get_host_os_info(os_release_path: str = "/etc/os-release") -> dict[str, str 
     """
     try:
         content = Path(os_release_path).read_text()
-    except OSError:
+    except (OSError, UnicodeError):
         return {
             "host_os_name": None,
             "host_os_release": None,
@@ -118,7 +118,7 @@ def update_environment_with_guest_os(
     Requires an active guest with vsock agent. Silently skips if guest
     info cannot be retrieved.
     """
-    if environment.get("guest_os_pretty_name"):
+    if "guest_os_pretty_name" in environment:
         return
 
     guest_info = get_guest_os_info(profile)
