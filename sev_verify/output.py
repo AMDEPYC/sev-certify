@@ -72,6 +72,8 @@ def write_json(
     cr: CertificationResult,
     certified_level: str | None,
     output_dir: Path,
+    *,
+    environment: dict[str, str | None] | None = None,
 ) -> Path:
     """Write machine-readable JSON certification result."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -99,6 +101,7 @@ def write_json(
         "certified_level": certified_level,
         "started_at": cr.started_at,
         "completed_at": cr.completed_at,
+        "environment": environment or {},
         "levels": levels_out,
     }
 
@@ -122,20 +125,55 @@ def write_markdown(
     cr: CertificationResult,
     certified_level: str | None,
     output_dir: Path,
+    *,
+    environment: dict[str, str | None] | None = None,
 ) -> Path:
     """Write human-readable Markdown certification report."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    result_label = "PASS" if cr.result == "pass" else "FAIL"
     lines: list[str] = []
     w = lines.append
 
-    w(f"## SEV Certification {cr.certification.version} -- {result_label}")
+    if certified_level:
+        w(f"# Achieved Certification Level {certified_level}")
+    else:
+        w("# Failed to Achieve a Certification Level")
     w("")
     w(f"**Certified level:** {certified_level or 'none'}")
     w(f"**Started:** {cr.started_at}")
     w(f"**Completed:** {cr.completed_at}")
     w("")
+
+    if environment:
+        env_lines: list[str] = []
+        if environment.get("host_os_pretty_name"):
+            env_lines.append(f"- **Host OS:** {environment['host_os_pretty_name']}")
+        elif environment.get("host_os_name"):
+            host_os = environment["host_os_name"]
+            if environment.get("host_os_release"):
+                host_os = f"{host_os} {environment['host_os_release']}"
+            env_lines.append(f"- **Host OS:** {host_os}")
+        if environment.get("kernel_version"):
+            env_lines.append(f"- **Host kernel:** {environment['kernel_version']}")
+        if environment.get("guest_os_pretty_name"):
+            env_lines.append(f"- **Guest OS:** {environment['guest_os_pretty_name']}")
+        elif environment.get("guest_os_name"):
+            guest_os = environment["guest_os_name"]
+            if environment.get("guest_os_release"):
+                guest_os = f"{guest_os} {environment['guest_os_release']}"
+            env_lines.append(f"- **Guest OS:** {guest_os}")
+        if environment.get("qemu_version"):
+            env_lines.append(f"- **QEMU:** {environment['qemu_version']}")
+        if environment.get("ovmf_version"):
+            env_lines.append(f"- **OVMF:** {environment['ovmf_version']}")
+        elif environment.get("ovmf_path"):
+            env_lines.append(f"- **OVMF:** {environment['ovmf_path']}")
+        if env_lines:
+            w("## Environment")
+            w("")
+            for el in env_lines:
+                w(el)
+            w("")
 
     # Group tests by level
     tests_by_level, unlabeled = _group_tests_by_level(cr.test_results)

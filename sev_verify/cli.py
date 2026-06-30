@@ -9,6 +9,8 @@ import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .environment import detect_environment
+from .os_info import update_environment_with_guest_os
 from .models import (
     CertificationDefinition,
     CertificationResult,
@@ -30,7 +32,12 @@ from .runner import (
     run_vm_stop_step,
     test_artifact_dir,
 )
-from .vm_profile import VMLaunchResult, stop_vm
+from .vm_profile import (
+    DEFAULT_QEMU_BINARY,
+    find_ovmf_path,
+    VMLaunchResult,
+    stop_vm,
+)
 
 _LINE_WIDTH = 80
 
@@ -308,6 +315,7 @@ def execute_test(
     certification_version: str | None = None,
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
+    environment: dict[str, str | None] | None = None,
 ) -> TestResult:
     """Run a test, printing each step live as it executes."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -388,6 +396,8 @@ def execute_test(
                 else:
                     sr, new_launch = run_vm_launch_step(step, profile)
                     launch = new_launch
+                    if launch is not None and launch.ok and environment is not None:
+                        update_environment_with_guest_os(environment, launch.profile)
             elif step.kind == "vm_stop":
                 if launch is None:
                     sr = StepResult(
@@ -412,6 +422,8 @@ def execute_test(
                 else:
                     if launch is None:
                         launch = profile.vm_launch()
+                        if launch.ok and environment is not None:
+                            update_environment_with_guest_os(environment, launch.profile)
                     if not launch.ok:
                         sr = StepResult(
                             step=step,
@@ -481,6 +493,7 @@ def execute_certification(
     artifacts_root: Path,
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
+    environment: dict[str, str | None] | None = None,
 ) -> CertificationResult:
     """Run all tests in a certification with live output."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -505,6 +518,7 @@ def execute_certification(
             certification_version=cert.version,
             qemu_binary=qemu_binary,
             ovmf_path=ovmf_path,
+            environment=environment,
         )
         test_results.append(tr)
         if tr.result != "pass":
@@ -573,6 +587,14 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         ovmf_override = str(args.ovmf.resolve())
 
+    # Resolve effective OVMF path for environment detection
+    effective_ovmf = ovmf_override or find_ovmf_path()
+
+    environment = detect_environment(
+        qemu_binary=qemu_override or DEFAULT_QEMU_BINARY,
+        ovmf_path=effective_ovmf,
+    )
+
     cert_dir = Path(__file__).resolve().parent / "cert_tests"
 
     version_filters = _parse_version_filters(args.versions)
@@ -585,11 +607,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    _flush(f"   Guest: {guest_path}")
-    if qemu_override:
-        _flush(f"   QEMU:  {qemu_override}")
-    if ovmf_override:
-        _flush(f"   OVMF:  {ovmf_override}")
+    _flush(f"   Guest:  {guest_path}")
+    if environment.get("host_os_pretty_name"):
+        _flush(f"   Host:   {environment['host_os_pretty_name']}")
+    if environment.get("kernel_version"):
+        _flush(f"   Kernel: {environment['kernel_version']}")
+    if environment.get("qemu_version"):
+        _flush(f"   QEMU:   {environment['qemu_version']}")
+    elif qemu_override:
+        _flush(f"   QEMU:   {qemu_override}")
+    if environment.get("ovmf_version"):
+        _flush(f"   OVMF:   {environment['ovmf_version']}")
+    elif effective_ovmf:
+        _flush(f"   OVMF:   {effective_ovmf}")
     _flush("")
 
     total_tests = 0
@@ -609,6 +639,7 @@ def main(argv: list[str] | None = None) -> int:
                 certification_version=None,
                 qemu_binary=qemu_override,
                 ovmf_path=ovmf_override,
+                environment=environment,
             )
             prereq_results.append(tr)
             _flush("")
@@ -643,14 +674,15 @@ def main(argv: list[str] | None = None) -> int:
             artifacts_root=args.artifacts_dir,
             qemu_binary=qemu_override,
             ovmf_path=ovmf_override,
+            environment=environment,
         )
         cert_results.append(cr)
         total_tests += len(cr.test_results)
         total_passed += sum(1 for tr in cr.test_results if tr.result == "pass")
 
         certified_level = _highest_certified_level(cr)
-        json_path = write_json(cr, certified_level, args.output_dir)
-        md_path = write_markdown(cr, certified_level, args.output_dir)
+        json_path = write_json(cr, certified_level, args.output_dir, environment=environment)
+        md_path = write_markdown(cr, certified_level, args.output_dir, environment=environment)
         _flush(f"   Wrote {json_path}")
         _flush(f"   Wrote {md_path}")
         _flush("")

@@ -22,6 +22,15 @@ DEFAULT_OVMF_CANDIDATES = (
     "/usr/share/edk2/ovmf/OVMF.amdsev.fd",
 )
 
+
+def find_ovmf_path() -> str | None:
+    """Return the first existing OVMF candidate path, or None."""
+    for candidate in DEFAULT_OVMF_CANDIDATES:
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
 DEFAULT_GUEST_ERROR_LOG = "/tmp/guest-error.log"
 DEFAULT_QEMU_BINARY = "qemu-system-x86_64"
 DEFAULT_MEMORY_MB = 2048
@@ -136,9 +145,9 @@ class VMProfile:
             if not path.is_file():
                 raise VMProfileError(f"OVMF firmware not found on provided path: {self.ovmf_path}")
             return str(path)
-        for candidate in DEFAULT_OVMF_CANDIDATES:
-            if Path(candidate).is_file():
-                return candidate
+        found = find_ovmf_path()
+        if found:
+            return found
         raise VMProfileError(
             "AMD SEV-compatible OVMF is not present; cannot launch SEV-SNP guest. "
             f"Tried: {', '.join(DEFAULT_OVMF_CANDIDATES)}"
