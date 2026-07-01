@@ -370,7 +370,7 @@ def execute_test(
         for i, step in enumerate(steps):
             is_last = i == total_steps - 1
 
-            ctx.profile = profile
+            profile = ctx.profile
             ctx.launch = launch
 
             if _IS_TTY:

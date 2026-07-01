@@ -19,3 +19,12 @@ description = "Test SNP_CONFIG and SNP_COMMIT host commands"
 module = "cert_tests.c3_0.c3_0_0_1.snphost_config_commit"
 scope = "host"
 level = "3.0.0-1"
+
+# ── Level 3.0.0-2 ───────────────────────────────────────────
+
+[[tests]]
+name = "derived-keys"
+description = "Launch SEV-SNP guest with ID block (derived keys placeholder)"
+module = "cert_tests.c3_0.c3_0_0_2.derived_keys_test"
+scope = "mixed"
+level = "3.0.0-2"

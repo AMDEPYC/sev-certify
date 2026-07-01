@@ -99,6 +99,9 @@ class VMProfile:
     policy: str | int | None = None
     auth_key_enabled: bool = False
     kernel_hashes: bool = True
+    # ID block parameters — set by generate_id_block() in sev_verify.id_block.
+    id_block: str | None = None
+    id_auth: str | None = None
     # Fixed SEV-SNP parameters used by the existing launch scripts.
     cbitpos: int = 51
     reduced_phys_bits: int = 1
@@ -278,6 +281,9 @@ def _build_sev_snp_guest_object(profile: VMProfile) -> str:
         parts.append(f"policy={_format_policy(profile.policy)}")
     if profile.auth_key_enabled:
         parts.append("author-key-enabled=true")
+    if profile.id_block and profile.id_auth:
+        parts.append(f"id-block={profile.id_block}")
+        parts.append(f"id-auth={profile.id_auth}")
     return ",".join(parts)
 
 
