@@ -20,6 +20,7 @@ Pulled files and analysis output for this test go under ``ctx.artifact_dir``
 import subprocess
 from pathlib import Path
 
+from sev_verify.cvm_props import MeasurementError, read_measurement
 from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
 from sev_verify.vm_profile import VMProfile, VMProfileError
 
@@ -82,10 +83,13 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
     to values computed in earlier ``callable`` or ``host`` steps.
     """
     report_file = ctx.artifact_dir / "report.bin"
-    measurement_file = ctx.artifact_dir / "guest_measurement.txt"
     request_file = ctx.artifact_dir / "request.bin"
 
-    expected_measurement = measurement_file.read_text().strip()
+    try:
+        expected_measurement = f"0x{read_measurement(ctx.artifact_dir)}"
+    except MeasurementError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
+
     request_data = "0x" + str(request_file.read_bytes().hex())
     result = subprocess.run(
         [
