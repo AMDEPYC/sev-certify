@@ -276,6 +276,11 @@ class TestDefinition:
     scope: Scope
     description: str = ""
     level: str = ""  # certification level, e.g. "3.0.0-0"
+    # True when the test may change host-level state (e.g. firmware TCB
+    # settings). Such changes are gated behind ``--allow-host-changes`` and
+    # are boot-session-only (reset on reboot). Surfaced at startup so operators
+    # know which tests can touch the host. See StepContext.allow_host_changes.
+    host_changes: bool = False
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -369,6 +374,10 @@ class StepContext:
     # Global CLI overrides (same as ``python3 -m sev_verify --qemu-binary`` / ``--ovmf``).
     cli_qemu_binary: str | None = None
     cli_ovmf_path: str | None = None
+    # Set by ``--allow-host-changes``: permit tests to make host-level changes,
+    # such as changing firmware TCB settings (e.g. committing firmware TCB
+    # levels). These are boot-session-only and reset on the next reboot.
+    allow_host_changes: bool = False
 
 
 @dataclass

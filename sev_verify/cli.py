@@ -36,6 +36,7 @@ from .vm_profile import (
     DEFAULT_QEMU_BINARY,
     find_ovmf_path,
     VMLaunchResult,
+    VMProfileError,
     stop_vm,
 )
 
@@ -114,6 +115,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         metavar="PATH",
         help="Override OVMF firmware .fd (overrides test VMProfile and host search paths)",
+    )
+    parser.add_argument(
+        "--allow-host-changes",
+        dest="allow_host_changes",
+        action="store_true",
+        default=False,
+        help="Allow making host-level changes, such as changing FW TCB settings.",
     )
     return parser.parse_args(argv)
 
@@ -290,6 +298,36 @@ def _section(label: str) -> None:
     _flush(f"{prefix}{'─' * (_LINE_WIDTH - len(prefix))}")
 
 
+def _print_host_changes_notice(
+    manifest_entries: list[tuple[Path, list[str]]], allow_host_changes: bool,
+) -> None:
+    """List selected tests that may change host state, grouped by level.
+
+    Sourced from each test's ``host_changes`` manifest flag so the set stays
+    authoritative. Prints nothing when no selected test touches the host.
+    """
+    by_level: dict[str, list[str]] = {}
+    for manifest_path, level_filters in manifest_entries:
+        try:
+            cert = _filter_tests(load_manifest(manifest_path), level_filters)
+        except ValueError:
+            continue  # a malformed manifest surfaces later in the run loop
+        for test in cert.tests:
+            if test.host_changes:
+                by_level.setdefault(test.level or cert.version, []).append(test.name)
+
+    if not by_level:
+        return
+
+    state = "enabled" if allow_host_changes else "disabled (tests skipped/downgraded)"
+    _flush(f"   Host changes: --allow-host-changes {state}")
+    _flush("   Tests that may change host state (boot-session-only, reset on reboot):")
+    for level in sorted(by_level):
+        for name in by_level[level]:
+            _flush(f"     • {level}  {name}")
+    _flush("")
+
+
 def _fmt_duration(ms: int | None) -> str:
     """Format a duration for display."""
     if ms is None:
@@ -322,6 +360,7 @@ def execute_test(
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
     environment: dict[str, str | None] | None = None,
+    allow_host_changes: bool = False,
 ) -> TestResult:
     """Run a test, printing each step live as it executes."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -370,6 +409,7 @@ def execute_test(
             launch=None,
             cli_qemu_binary=qemu_binary,
             cli_ovmf_path=ovmf_path,
+            allow_host_changes=allow_host_changes,
         )
 
         overall = "pass"
@@ -431,19 +471,27 @@ def execute_test(
                     )
                 else:
                     if launch is None:
-                        launch = profile.vm_launch()
-                        if launch.ok and environment is not None:
-                            update_environment_with_guest_os(environment, launch.profile)
-                    if not launch.ok:
+                        try:
+                            launch = profile.vm_launch()
+                            if launch.ok and environment is not None:
+                                update_environment_with_guest_os(environment, launch.profile)
+                        except VMProfileError as exc:
+                            sr = StepResult(
+                                step=step,
+                                result="error",
+                                stderr=str(exc),
+                                duration_ms=0,
+                            )
+                    if launch is not None and not launch.ok:
                         sr = StepResult(
                             step=step,
                             result="error",
                             stderr=launch.message,
                             duration_ms=0,
                         )
-                    elif step.kind == "guest":
+                    elif launch is not None and step.kind == "guest":
                         sr = run_guest_step(step, launch.profile)
-                    else:
+                    elif launch is not None:
                         sr = run_guest_pull_step(step, launch.profile, artifact_dir)
             elif step.kind == "callable":
                 sr = run_callable_step(step, ctx)
@@ -523,6 +571,7 @@ def execute_certification(
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
     environment: dict[str, str | None] | None = None,
+    allow_host_changes: bool = False,
 ) -> CertificationResult:
     """Run all tests in a certification with live output."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -550,6 +599,7 @@ def execute_certification(
             qemu_binary=qemu_binary,
             ovmf_path=ovmf_path,
             environment=environment,
+            allow_host_changes=allow_host_changes,
         )
         test_results.append(tr)
         overall = _worse_result(overall, tr.result)
@@ -665,6 +715,8 @@ def main(argv: list[str] | None = None) -> int:
         _flush(f"   OVMF:   {effective_ovmf}")
     _flush("")
 
+    _print_host_changes_notice(manifest_entries, args.allow_host_changes)
+
     total_tests = 0
     total_passed = 0
 
@@ -683,6 +735,7 @@ def main(argv: list[str] | None = None) -> int:
                 qemu_binary=qemu_override,
                 ovmf_path=ovmf_override,
                 environment=environment,
+                allow_host_changes=args.allow_host_changes,
             )
             prereq_results.append(tr)
             _flush("")
@@ -718,6 +771,7 @@ def main(argv: list[str] | None = None) -> int:
             qemu_binary=qemu_override,
             ovmf_path=ovmf_override,
             environment=environment,
+            allow_host_changes=args.allow_host_changes,
         )
         cert_results.append(cr)
         total_tests += len(cr.test_results)

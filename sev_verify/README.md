@@ -3,6 +3,9 @@
 Host-side testing harness for SEV-SNP certification. Reads TOML manifests that declare which tests to run, imports per-test Python modules that define executable steps, and orchestrates execution across host and guest environments.
 sev-verify uses a non-secure vsock channel between the host and the guest, which is launched as a CVM. Given the purpose of sev-certify, this is acceptable. The vsock channel properties are properties of the guest and the guest is purpose-built for sev-certify. As built, there is no incentive for an attacker to take advantage of the security weakness of the vsock channel.
 
+> [!WARNING]
+> This harness modifies host firmware/platform settings and is not intended for hosts running production workloads. It is meant for test and development servers, where its purpose is to validate operating systems. For safe platform readiness checks, use [snphost](https://github.com/virtee/snphost) instead.
+
 ## Usage
 
 ```bash
@@ -79,3 +82,18 @@ results/                 Output (gitignored)
 ## Requirements
 
 Python 3.11+ (uses `tomllib` from stdlib). No external packages.
+
+## Flags
+
+Invoke as `python3 -m sev_verify <path_to_guest> [flags]`. There are no subcommands — a single positional argument plus optional flags.
+
+| Argument / flag | Default | Description |
+| --- | --- | --- |
+| `path_to_guest` | *(required)* | Path to the guest image/UKI to test. |
+| `-v`, `--version` | all manifests | Version filter(s). Accepts `3.0` (all tests in cert 3.0), `3.0.0` (all `3.0.0-*` levels), or `3.0.0-0` (exact level). Comma-separated lists and repeated `-v` flags both work. If omitted, every `cert_tests/*/manifest.toml` runs. |
+| `-o`, `--output-dir` | `results/` | Directory for JSON and Markdown result files. |
+| `--artifacts-dir DIR` | `./artifacts` | Base directory for per-test artifact folders (see [Artifacts directory](#artifacts-directory)). |
+| `--qemu-binary`, `--qemu PATH` | test `VMProfile`, then `qemu-system-x86_64` | Override the QEMU executable for every test that launches a VM. Path must exist. |
+| `--ovmf PATH` | test `VMProfile`, then host search paths | Override the OVMF firmware `.fd` for every test that launches a VM. Path must exist. |
+| `--allow-host-changes` | off | Allow tests to make host-level changes, such as firmware TCB settings (e.g. `snphost commit` advancing the committed TCB floor). These are boot-session-only and reset on reboot. Tests that may change host state are declared with `host_changes = true` in the manifest and listed at startup (grouped by level) along with whether this flag is active. |
+

@@ -20,7 +20,7 @@ from .models import (
     StepResult,
     TestDefinition,
 )
-from .vm_profile import VMProfile, VMLaunchError, VMLaunchResult, stop_vm
+from .vm_profile import VMProfile, VMLaunchResult, VMProfileError, stop_vm
 
 
 def _check_expected_values(step: BaseStep, exit_code: int, stdout: str) -> bool:
@@ -173,7 +173,7 @@ def run_vm_launch_step(
     start = time.monotonic()
     try:
         launch = profile.vm_launch()
-    except VMLaunchError as exc:
+    except VMProfileError as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
         # A launch that fails hard is still a launch outcome, so honour the
         # step's expected_result. Reporting "error" unconditionally made it
