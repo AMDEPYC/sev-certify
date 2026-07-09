@@ -160,7 +160,7 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
     id_block_b64 = id_block_file.read_text().strip()
     id_auth_b64 = id_auth_file.read_text().strip()
 
-    ctx.profile = replace(ctx.profile, id_block=id_block_b64, id_auth=id_auth_b64)
+    ctx.profile = replace(ctx.profile, id_block=id_block_b64, id_auth=id_auth_b64, policy=policy)
 
     return StepHandlerResult(
         exit_code=0,
