@@ -157,7 +157,7 @@ jobs:
                   
                   if (headerIdx !== -1) {
                     const headers = readmeLines[headerIdx].split('|').map(h => h.trim()).filter(h => h);
-                    const readmeColumnIndex = headers.findIndex(h => h.includes(`${certVersion} Certification`));
+                    const readmeColumnIndex = headers.findIndex(h => h.includes(`EPYC ${procSeries}`));
                     
                     if (readmeColumnIndex !== -1) {
                       const readmeTableStart = headerIdx + 2;
