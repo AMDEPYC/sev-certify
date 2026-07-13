@@ -453,10 +453,28 @@ def test_guest_svn_sensitivity(report_info: Optional[ReportInfo]) -> bool:
 
     svn_values = list(range(0, max_svn + 1))
 
+    # Test values above the active bound — these should always be rejected.
+    # When there's no ID block, max_svn=0, so values 1..3 must be rejected.
+    # When there's an ID block, max_svn+1..max_svn+3 must be rejected.
+    over_values = list(range(max_svn + 1, max_svn + 4))
+    print(f"  Testing {len(over_values)} above-bound SVN values: {over_values}")
+    passed = True
+    for svn in over_values:
+        bound_file = KEY_DERIVATION_DIR / f"svn{svn}_bound_check.bin"
+        if derive_key(bound_file, root_key="vcek", vmpl=0, guest_svn=svn,
+                      guest_field_select=1 << 4, expected_failure=True):
+            print(f"✗ FAIL: SVN={svn} succeeded — bound "
+                  f"({max_svn}) not enforced by firmware", file=sys.stderr)
+            passed = False
+        else:
+            print(f"  ✓ Bound enforced: SVN={svn} correctly rejected")
+    if not passed:
+        return False
+
     if len(svn_values) < 2:
         print("  Only one valid SVN value (0); sensitivity cannot be tested.")
         print("  (Expected when guest was launched without an ID block.)")
-        print("✓ PASS: N/A (single valid value)")
+        print("✓ PASS: bound enforcement verified, sensitivity N/A (single valid value)")
         return True
 
     print(f"  Testing {len(svn_values)} SVN values: {svn_values}")
@@ -464,9 +482,6 @@ def test_guest_svn_sensitivity(report_info: Optional[ReportInfo]) -> bool:
     failed_svns: List[int] = []
     for svn in svn_values:
         key_file = KEY_DERIVATION_DIR / f"svn{svn}_key.bin"
-        # Values above the id-block launch SVN are expected to be rejected by
-        # the firmware; treat all loop failures as expected so they don't flood
-        # the log with ERROR output.
         if not derive_key(key_file, root_key="vcek", vmpl=0, guest_svn=svn,
                           guest_field_select=1 << 4, expected_failure=True):
             failed_svns.append(svn)
@@ -479,16 +494,6 @@ def test_guest_svn_sensitivity(report_info: Optional[ReportInfo]) -> bool:
     if failed_svns:
         print(f"  {len(failed_svns)} SVN value(s) rejected by firmware "
               f"(above id-block bound): {failed_svns}")
-
-    # Explicitly verify the id-block SVN bound is enforced
-    if max_svn > 0:
-        bound_file = KEY_DERIVATION_DIR / f"svn{max_svn + 1}_bound_check.bin"
-        if derive_key(bound_file, root_key="vcek", vmpl=0, guest_svn=max_svn + 1,
-                      guest_field_select=1 << 4, expected_failure=True):
-            print(f"✗ FAIL: SVN={max_svn + 1} succeeded — id-block bound "
-                  f"({max_svn}) not enforced by firmware", file=sys.stderr)
-            return False
-        print(f"  ✓ ID block bound enforced: SVN={max_svn + 1} correctly rejected")
 
     if len(keys) < 2:
         print("ERROR: Fewer than 2 successful derivations — cannot test sensitivity",
@@ -524,9 +529,39 @@ def test_tcb_sensitivity(report_info: Optional[ReportInfo]) -> bool:
     print(f"  Testing {len(candidates)} TCB candidate(s)")
     dprint(f"  Candidates: {[f'0x{v:016x}' for v in candidates]}")
 
+    # Per-component bound enforcement check — always run, even when committed
+    # components are 0.  Values above the committed bound must be rejected.
+    # TCB_VERSION bit layout is schema-version-specific (attestation report v2,
+    # ID block v1, SNP ABI spec). Skip if the report version doesn't match.
+    passed = True
+    if not report_version_ok(report_info):
+        print("  Skipping TCB bound check: report version unknown or unexpected")
+    else:
+        for comp, label, max_val in [
+            ('boot_loader', 'Boot Loader', committed.boot_loader),
+            ('tee',         'TEE',         committed.tee),
+            ('snp',         'SNP',         committed.snp),
+            ('microcode',   'Microcode',   committed.microcode),
+        ]:
+            for over_by in range(1, 4):
+                over = TcbVersion()
+                setattr(over, comp, max_val + over_by)
+                bound_file = KEY_DERIVATION_DIR / f"tcb_bound_{comp}_{over_by}.bin"
+                if derive_key(bound_file, root_key="vcek", vmpl=0,
+                              tcb_version=over.to_u64(),
+                              guest_field_select=1 << 5,
+                              expected_failure=True):
+                    print(f"✗ FAIL: {label}={max_val + over_by} succeeded — "
+                          f"committed bound ({max_val}) not enforced", file=sys.stderr)
+                    passed = False
+                else:
+                    print(f"  ✓ TCB bound enforced: {label}={max_val + over_by} correctly rejected")
+        if not passed:
+            return False
+
     if len(candidates) < 2:
         print("  All TCB components are zero; sensitivity cannot be tested.")
-        print("✓ PASS: N/A (single valid value)")
+        print("✓ PASS: bound enforcement verified, sensitivity N/A (single valid value)")
         return True
 
     keys: Dict[int, str] = {}
@@ -553,46 +588,12 @@ def test_tcb_sensitivity(report_info: Optional[ReportInfo]) -> bool:
         return False
 
     unique_keys = set(keys.values())
-    passed = len(unique_keys) == len(keys)
-    if passed:
+    if len(unique_keys) == len(keys):
         print(f"✓ PASS: All {len(keys)} TCB values produce distinct keys")
+        return True
     else:
         print("✗ FAIL: Some TCB values produce identical keys", file=sys.stderr)
-
-    # Per-component bound enforcement check.
-    # TCB_VERSION bit layout is schema-version-specific (attestation report v2,
-    # ID block v1, SNP ABI spec). Skip if the report version doesn't match.
-    if not report_version_ok(report_info):
-        print("  Skipping TCB bound check: report version unknown or unexpected")
-        return passed
-
-    checkable = [(comp, label, max_val) for comp, label, max_val in [
-        ('boot_loader', 'Boot Loader', committed.boot_loader),
-        ('tee',         'TEE',         committed.tee),
-        ('snp',         'SNP',         committed.snp),
-        ('microcode',   'Microcode',   committed.microcode),
-    ] if max_val > 0]
-
-    if not checkable:
-        print("  All committed TCB components are 0 — bound check skipped"
-              " (fields may not be applicable on this platform)")
-        return passed
-
-    for comp, label, max_val in checkable:
-        over = TcbVersion()
-        setattr(over, comp, max_val + 1)
-        bound_file = KEY_DERIVATION_DIR / f"tcb_bound_{comp}.bin"
-        if derive_key(bound_file, root_key="vcek", vmpl=0,
-                      tcb_version=over.to_u64(),
-                      guest_field_select=1 << 5,
-                      expected_failure=True):
-            print(f"✗ FAIL: {label} SVN={max_val + 1} succeeded — "
-                  f"committed bound ({max_val}) not enforced", file=sys.stderr)
-            passed = False
-        else:
-            print(f"  ✓ TCB bound enforced: {label} SVN={max_val + 1} correctly rejected")
-
-    return passed
+        return False
 
 
 def test_guest_field_select_sensitivity() -> bool:
