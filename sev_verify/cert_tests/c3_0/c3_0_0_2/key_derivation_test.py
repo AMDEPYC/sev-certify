@@ -8,10 +8,21 @@ consistent derived keys. The guest-side script exercises:
   - Guest SVN sensitivity and ID-block bound enforcement
   - TCB version sensitivity and committed-TCB bound enforcement
   - Guest Field Select (GFS) sensitivity and per-bit field mixing
+
+When sev_verify.id_block is available (from the ID block PR), the guest
+is launched with an ID block, giving the key derivation tests richer
+coverage (non-zero guest SVN, family_id, image_id).
 """
 
+from sev_verify.cert_tests.c3_0.c3_0_0_0.attestation_test import calculate_measurement  # noqa: F401
 from sev_verify.models import BaseStep, Step
 from sev_verify.vm_profile import VMProfile
+
+try:
+    from sev_verify.id_block import generate_id_block  # noqa: F401
+    _HAS_ID_BLOCK = True
+except ImportError:
+    _HAS_ID_BLOCK = False
 
 vm_profile = VMProfile(
     image_path="",
@@ -22,7 +33,24 @@ _KEY_DERIVATION_SCRIPT = "/usr/local/lib/scripts/snpguest_key_derivation.py"
 
 
 def steps() -> list[BaseStep]:
-    return [
+    pre = [
+        Step.for_callable(
+            name="Calculate measurement",
+            type="setup",
+            handler="calculate_measurement",
+            timeout=60,
+        ),
+    ]
+    if _HAS_ID_BLOCK:
+        pre.append(
+            Step.for_callable(
+                name="Generate ID block",
+                type="setup",
+                handler="generate_id_block",
+                timeout=30,
+            ),
+        )
+    return pre + [
         Step.for_vm_launch(
             name="Launch SEV-SNP guest",
             type="setup",
