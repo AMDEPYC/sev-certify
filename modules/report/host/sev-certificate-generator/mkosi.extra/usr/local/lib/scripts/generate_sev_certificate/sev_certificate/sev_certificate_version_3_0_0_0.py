@@ -109,6 +109,46 @@ class SEV_Certificate:
 
         return snpguest_attestation_summary
 
+    def get_key_derivation_summary(self):
+        """Generate SNP Guest Key Derivation summary from the key-derivation service.
+
+        Returns:
+            Tuple of (formatted_summary_str, inferred_status_str).
+            inferred_status is "passed", "failed", or None if no JSON data found.
+        """
+
+        key_derivation_service = "key-derivation.service"
+        key_derivation_cmd = f"journalctl -D {self.guest_logs_path} -u {key_derivation_service} -o cat"
+        result = subprocess.run(key_derivation_cmd, shell=True, text=True, capture_output=True)
+
+        # Extract and parse JSON objects (format: {"test_name": "0"/"1"})
+        json_objects = re.findall(r'\{[^}]+\}', result.stdout)
+
+        key_derivation_data = {}
+        for obj in json_objects:
+            try:
+                key_derivation_data.update(json.loads(obj))
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        if not key_derivation_data:
+            return '', None
+
+        # Convert status codes to human-readable form (0=passed, non-zero=failed)
+        for step, status_code in key_derivation_data.items():
+            key_derivation_data[step] = "passed" if int(status_code) == 0 else "failed"
+
+        # Infer overall status: failed if any step failed
+        inferred_status = "failed" if any(s == "failed" for s in key_derivation_data.values()) else "passed"
+
+        # Format output with test emojis
+        summary = ''
+        for step, step_status in key_derivation_data.items():
+            emoji = test_status_emojis.get(step_status.lower(), '?')
+            summary += "\t\t\t " + f"{emoji} {step}" + "\n"
+
+        return summary, inferred_status
+
     def get_snp_guest_summary(self):
         """Generate all SNP Guest tests summary."""
 
@@ -117,6 +157,11 @@ class SEV_Certificate:
         command = subprocess.run(snpguest_command, shell=True, check=True, text=True, capture_output=True)
         snpguest_services = command.stdout
         snpguest_services_list = snpguest_services.splitlines()
+
+        # key-derivation.service may finish after other services and miss the journal
+        # upload window, so ensure it is always included even if discovery missed it.
+        if "key-derivation.service" not in snpguest_services_list:
+            snpguest_services_list.append("key-derivation.service")
 
         # Map SNP Guest test service name with its status
         snpguest_services_status ={}
@@ -130,16 +175,27 @@ class SEV_Certificate:
         snpguest_emoji = ''
 
         guest_attestation_summary = self.get_snp_guest_attestation_summary() + "\n"
+        key_derivation_summary, key_derivation_status = self.get_key_derivation_summary()
+        key_derivation_summary = (key_derivation_summary or '') + "\n"
 
         for service, service_status in snpguest_services_status.items():
+            # For key-derivation.service, use JSON-inferred status when systemd lifecycle
+            # message is absent (shows as '?') due to journal-upload timing
+            if "key-derivation.service" in service.lower() and service_status == '?' and key_derivation_status:
+                service_status = key_derivation_status
+
             emoji = test_status_emojis.get(service_status.lower(),'?')
             content += "\t" + f"{emoji} {service} :"
             service_description = self.sev_service.get_service_description(service, "guest")
             content += "  " + service_description + "\n"
 
             # Add step-by-step summary status of the guest attestation workflow
-            if "attestation-workflow.service" in service.lower() :
+            if "attestation-workflow.service" in service.lower():
                 content += guest_attestation_summary
+
+            # Add step-by-step summary status of the key derivation tests
+            if "key-derivation.service" in service.lower():
+                content += key_derivation_summary
 
             # Set "snpguest_emoji" status based on the single failed/skipped SNP test
             if service_status.lower() == 'failed':
