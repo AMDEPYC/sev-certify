@@ -11,13 +11,15 @@ This table contains operating systems that have undergone certification testing 
 
 | OS | Status | [EPYC 7003][cert-3.0] | [EPYC 9004][cert-3.1] | [EPYC 8005][cert-4.0] | [EPYC 9005][cert-4.1] |
 |---|---|---|---|---|---|
-| CentOS 10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/225) |
+| CentOS 10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/278) |
 | Debian 13 |  ❌ |  [N/A](https://github.com/AMDEPYC/sev-certify/issues/152) |
 | Debian Forky | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/228) |
-| Fedora 41 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/229) |
+| Fedora 41 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/279) |
 | Rocky 10.1 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/230) |
-| Ubuntu 25.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/231) |
-| Ubuntu 25.10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/232) |
+| Rocky 10.2 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/281) |
+| Ubuntu 25.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/274) |
+| Ubuntu 25.10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/276) |
+| Ubuntu 26.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/280) |
 
 ✅ Latest Level Certified
 ❌ Latest Level Not Certified
