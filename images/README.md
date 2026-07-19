@@ -4,6 +4,35 @@ mkosi image definitions for SEV-SNP host and guest environments. Each subdirecto
 
 ## Build
 
+### 1. Fetch dependency tags
+
+```bash
+make tags
+```
+
+This queries the GitHub API for the latest release tag of each build dependency and writes them to `.tags`:
+
+| Variable | Repository | Used by |
+|---|---|---|
+| `SNPGUEST_TAG` | [virtee/snpguest](https://github.com/virtee/snpguest) | Guest and host images |
+| `BEACON_TAG` | [AMDEPYC/beacon](https://github.com/AMDEPYC/beacon) | Host images |
+| `SNPHOST_TAG` | [virtee/snphost](https://github.com/virtee/snphost) | Host images |
+
+The `.tags` file is passed to mkosi via `--env-file` so each build script uses the pre-fetched tag rather than calling the GitHub API individually. This avoids rate-limit issues when building multiple images (the GitHub API allows 60 unauthenticated requests/hour).
+
+Re-run `make tags` whenever you want to pick up a new release of one of the dependencies. The `.tags` file is not checked in, so it won't update automatically.
+
+If you hit rate limits, set a token first:
+
+```bash
+export GITHUB_TOKEN=$(gh auth token)
+make tags
+```
+
+> **Note**: In CI, the workflow fetches these same tags and injects them directly into mkosi configs, so `make tags` is only needed for local builds.
+
+### 2. Build images
+
 ```bash
 make list                    # show available images
 make host-fedora-41          # build a specific image
