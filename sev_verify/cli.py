@@ -35,6 +35,7 @@ from .runner import (
 from .vm_profile import (
     DEFAULT_QEMU_BINARY,
     find_ovmf_path,
+    VMLaunchError,
     VMLaunchResult,
     stop_vm,
 )
@@ -427,19 +428,27 @@ def execute_test(
                     )
                 else:
                     if launch is None:
-                        launch = profile.vm_launch()
-                        if launch.ok and environment is not None:
-                            update_environment_with_guest_os(environment, launch.profile)
-                    if not launch.ok:
+                        try:
+                            launch = profile.vm_launch()
+                            if launch.ok and environment is not None:
+                                update_environment_with_guest_os(environment, launch.profile)
+                        except VMLaunchError as exc:
+                            sr = StepResult(
+                                step=step,
+                                result="error",
+                                stderr=str(exc),
+                                duration_ms=0,
+                            )
+                    if launch is not None and not launch.ok:
                         sr = StepResult(
                             step=step,
                             result="error",
                             stderr=launch.message,
                             duration_ms=0,
                         )
-                    elif step.kind == "guest":
+                    elif launch is not None and step.kind == "guest":
                         sr = run_guest_step(step, launch.profile)
-                    else:
+                    elif launch is not None:
                         sr = run_guest_pull_step(step, launch.profile, artifact_dir)
             elif step.kind == "callable":
                 sr = run_callable_step(step, ctx)

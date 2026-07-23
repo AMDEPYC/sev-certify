@@ -42,5 +42,5 @@ AMD EPYC 9005 (Turin)
 | Level | Features Certified |
 |---|---|
 | 3.0.0-0 | SEV-SNP Attestation |
-| 3.0.0-1 | memfd numa, key derivation, vlek loading, snphost config, snphost commit |
+| 3.0.0-1 | memfd numa, key derivation, vlek loading, [snphost config & commit](features/tcb-config-commit.md) |
 | 3.1.1-0 | Memory Hotplug, Vector Mitigation, Cloud Hypervisor |

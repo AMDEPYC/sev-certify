@@ -79,3 +79,9 @@ results/                 Output (gitignored)
 ## Requirements
 
 Python 3.11+ (uses `tomllib` from stdlib). No external packages.
+
+## ⚠️ Caution: tests that make permanent platform changes
+
+Most tests are transient — `snphost config set`/`reset`, VM launches, etc. reset on reboot. **One test makes an irreversible change:**
+
+- **`3.0.0-1` snphost-config-commit** runs `snphost commit`, which writes `CommittedTcb := CurrentTcb` into the PSP. This **permanently advances the platform's committed TCB floor**: it cannot be lowered (only raised by future firmware updates) and does **not** reset across reboots. After commit, the platform will refuse to boot firmware below the committed level. In normal operation the commit lands on the level already committed (a no-op), but on a machine where `CommittedTcb < CurrentTcb` it **will** advance the floor. The test records the committed floor before/after in its step output. See [`docs/features/tcb-config-commit.md`](../docs/features/tcb-config-commit.md) for details.
