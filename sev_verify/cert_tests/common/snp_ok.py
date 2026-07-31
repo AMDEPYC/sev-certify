@@ -47,7 +47,7 @@ def steps() -> list[BaseStep]:
     return [
         Step.for_host(
             name="snphost ok",
-            type="info",
+            type="required",
             command="snphost ok",
         ),
         Step.for_host(
