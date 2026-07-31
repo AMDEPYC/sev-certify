@@ -388,6 +388,41 @@ def test_gfs_field_mixing(ctx: StepContext) -> StepHandlerResult:
     return StepHandlerResult(exit_code=0, stdout="\n".join(lines))
 
 
+def save_cross_cvm_key(ctx: StepContext) -> StepHandlerResult:
+    """Derive and save a reference key from CVM 1 for cross-CVM comparison."""
+    ok, err = _derive_key(ctx, "cross_cvm_key.bin")
+    if not ok:
+        return StepHandlerResult(exit_code=1, stderr=f"Key derivation failed: {err}")
+    k = _read_key(ctx.artifact_dir / "cross_cvm_key.bin")
+    if k is None:
+        return StepHandlerResult(exit_code=1, stderr="Could not read derived key")
+    # Save as cvm1 reference for comparison after second launch
+    (ctx.artifact_dir / "cross_cvm_key_1.bin").write_bytes(k)
+    return StepHandlerResult(exit_code=0, stdout="Reference key saved from CVM 1")
+
+
+def verify_cross_cvm_key(ctx: StepContext) -> StepHandlerResult:
+    """Derive the same key in CVM 2 and compare with CVM 1's key."""
+    ok, err = _derive_key(ctx, "cross_cvm_key.bin")
+    if not ok:
+        return StepHandlerResult(exit_code=1, stderr=f"Key derivation failed in CVM 2: {err}")
+    k2 = _read_key(ctx.artifact_dir / "cross_cvm_key.bin")
+    k1 = _read_key(ctx.artifact_dir / "cross_cvm_key_1.bin")
+    if k1 is None:
+        return StepHandlerResult(exit_code=1, stderr="CVM 1 reference key not found")
+    if k2 is None:
+        return StepHandlerResult(exit_code=1, stderr="Could not read CVM 2 key")
+    if k1 == k2:
+        return StepHandlerResult(
+            exit_code=0,
+            stdout="Keys match across two independent CVMs — platform-bound derivation confirmed",
+        )
+    return StepHandlerResult(
+        exit_code=1,
+        stderr="Keys differ across CVMs — derived key is not stable across CVM lifetimes",
+    )
+
+
 # ── Steps ─────────────────────────────────────────────────────────────────────
 
 def steps() -> list[BaseStep]:
@@ -485,8 +520,39 @@ def steps() -> list[BaseStep]:
             timeout=60,
         ),
 
+        # ── Cross-CVM determinism ─────────────────────────────────────────
+        Step.for_callable(
+            name="Save reference key from CVM 1",
+            type="required",
+            handler="save_cross_cvm_key",
+            timeout=30,
+        ),
+
         Step.for_vm_stop(
-            name="Stop VM",
+            name="Stop CVM 1",
+            type="info",
+            timeout=60,
+        ),
+
+        Step.for_vm_launch(
+            name="Launch CVM 2",
+            type="setup",
+            timeout=300,
+        ).add_hint(
+            "Address already in use",
+            "A previous VM may still be running. "
+            "Try: sudo kill $(pgrep -f 'qemu.*guest-cid')",
+        ),
+
+        Step.for_callable(
+            name="Verify key matches across CVMs",
+            type="required",
+            handler="verify_cross_cvm_key",
+            timeout=30,
+        ),
+
+        Step.for_vm_stop(
+            name="Stop CVM 2",
             type="info",
             timeout=60,
         ),
