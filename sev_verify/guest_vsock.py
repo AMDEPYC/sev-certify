@@ -14,6 +14,7 @@ import json
 import re
 import shlex
 import socket
+import subprocess
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -142,9 +143,15 @@ def wait_for_guest(
     *,
     timeout: float | None = None,
     poll_interval: float = 2.0,
+    process: subprocess.Popen | None = None,
 ) -> None:
     """
     Block until the guest vsock agent responds or timeout is reached.
+
+    Pass ``process`` (the QEMU handle) to stop waiting the moment QEMU exits.
+    Without it, a guest that never starts — or one the firmware refuses to
+    launch — costs the full boot timeout and is then reported as an
+    indistinguishable "agent not ready", discarding the reason QEMU gave.
     """
     boot_timeout = timeout if timeout is not None else profile.vsock_boot_timeout
     deadline = time.monotonic() + boot_timeout
@@ -156,6 +163,11 @@ def wait_for_guest(
             return
         except GuestVsockError as exc:
             last_error = str(exc)
+            if process is not None and process.poll() is not None:
+                raise GuestVsockError(
+                    f"QEMU exited with code {process.returncode} before the "
+                    f"guest became ready"
+                ) from exc
             time.sleep(poll_interval)
 
     raise GuestVsockError(
@@ -169,12 +181,20 @@ def check_guest_ready(
     *,
     timeout: float | None = None,
     poll_interval: float = 2.0,
+    process: subprocess.Popen | None = None,
 ) -> tuple[bool, str]:
     """
     Return whether the guest vsock agent responds.
+
+    ``process`` is forwarded to :func:`wait_for_guest`; see its docstring.
     """
     try:
-        wait_for_guest(profile, timeout=timeout, poll_interval=poll_interval)
+        wait_for_guest(
+            profile,
+            timeout=timeout,
+            poll_interval=poll_interval,
+            process=process,
+        )
     except GuestVsockError as exc:
         return False, str(exc)
 

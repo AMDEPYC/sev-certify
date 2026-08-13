@@ -228,10 +228,20 @@ class VMProfile:
             # Import here to avoid circular import with guest_vsock.
             from .guest_vsock import check_guest_ready
 
-            booted, boot_error = check_guest_ready(self)
+            # Passing the process lets the wait abort as soon as QEMU dies,
+            # instead of polling vsock until the boot timeout expires against
+            # a VM that no longer exists.
+            booted, boot_error = check_guest_ready(self, process=process)
             if not booted:
                 ok = False
                 message = f"Guest did not boot: {boot_error}"
+                if process.poll() is not None:
+                    # QEMU's own diagnosis is far more useful than "agent not
+                    # ready" — for a rejected launch it names the firmware
+                    # error, e.g. "SNP_LAUNCH_FINISH ... 'Bad measurement'".
+                    stderr_tail = _read_guest_errors(self.guest_error_log).strip()
+                    if stderr_tail:
+                        message = f"{message}\nQEMU stderr:\n{stderr_tail}"
             elif message == "VM launch verified":
                 message = "VM launched and guest booted"
 
