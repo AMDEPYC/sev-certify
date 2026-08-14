@@ -175,10 +175,16 @@ def run_vm_launch_step(
         launch = profile.vm_launch()
     except VMLaunchError as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
+        # A launch that fails hard is still a launch outcome, so honour the
+        # step's expected_result. Reporting "error" unconditionally made it
+        # impossible to write a step that expects a launch to be refused —
+        # QEMU exiting immediately raises rather than returning ok=False.
+        passed = _check_expected_values(step, 1, str(exc))
         return (
             StepResult(
                 step=step,
-                result="error",
+                result="pass" if passed else "error",
+                exit_code=1,
                 stderr=str(exc),
                 duration_ms=duration_ms,
             ),
