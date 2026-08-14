@@ -505,7 +505,8 @@ _RESULT_SEVERITY = {"pass": 0, "skip": 1, "fail": 2, "error": 3}
 
 def _worse_result(current: str, candidate: str) -> str:
     """Return whichever of the two results is more severe."""
-    if _RESULT_SEVERITY.get(candidate, 0) > _RESULT_SEVERITY.get(current, 0):
+    unknown_severity = max(_RESULT_SEVERITY.values()) + 1
+    if _RESULT_SEVERITY.get(candidate, unknown_severity) > _RESULT_SEVERITY.get(current, unknown_severity):
         return candidate
     return current
 
