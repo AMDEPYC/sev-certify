@@ -496,6 +496,20 @@ def execute_test(
             stop_vm(launch)
 
 
+#: Ordering used to fold many test results into one certification result.
+#: A later test must never mask a worse earlier one. "skip" is included for
+#: forward compatibility — StepResult already has that state, and a test-level
+#: skip belongs between pass and fail.
+_RESULT_SEVERITY = {"pass": 0, "skip": 1, "fail": 2, "error": 3}
+
+
+def _worse_result(current: str, candidate: str) -> str:
+    """Return whichever of the two results is more severe."""
+    if _RESULT_SEVERITY.get(candidate, 0) > _RESULT_SEVERITY.get(current, 0):
+        return candidate
+    return current
+
+
 def execute_certification(
     cert: CertificationDefinition,
     guest_path: Path,
@@ -533,8 +547,7 @@ def execute_certification(
             environment=environment,
         )
         test_results.append(tr)
-        if tr.result != "pass":
-            overall = tr.result
+        overall = _worse_result(overall, tr.result)
         _flush("")
 
     icon = _RESULT_LABEL.get(overall, "????")
