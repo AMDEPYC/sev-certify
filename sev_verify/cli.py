@@ -378,7 +378,11 @@ def execute_test(
         for i, step in enumerate(steps):
             is_last = i == total_steps - 1
 
-            ctx.profile = profile
+            # Re-read the profile from the context rather than overwriting it.
+            # A callable step may replace ctx.profile (dataclasses.replace on a
+            # frozen VMProfile yields a new object); assigning the stale local
+            # back over it silently discarded that change for every later step.
+            profile = ctx.profile
             ctx.launch = launch
 
             if _IS_TTY:
