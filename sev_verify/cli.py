@@ -504,10 +504,15 @@ _RESULT_SEVERITY = {"pass": 0, "skip": 1, "fail": 2, "error": 3}
 
 
 def _worse_result(current: str, candidate: str) -> str:
-    """Return whichever of the two results is more severe."""
-    if _RESULT_SEVERITY.get(candidate, 0) > _RESULT_SEVERITY.get(current, 0):
-        return candidate
-    return current
+    """Return whichever of the two results is more severe.
+
+    An unrecognised state ranks above every known one, so a typo surfaces
+    loudly rather than silently masking a real failure.
+    """
+    unknown = max(_RESULT_SEVERITY.values()) + 1
+    current_severity = _RESULT_SEVERITY.get(current, unknown)
+    candidate_severity = _RESULT_SEVERITY.get(candidate, unknown)
+    return candidate if candidate_severity > current_severity else current
 
 
 def execute_certification(

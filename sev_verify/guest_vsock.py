@@ -143,7 +143,7 @@ def wait_for_guest(
     *,
     timeout: float | None = None,
     poll_interval: float = 2.0,
-    process: subprocess.Popen | None = None,
+    process: subprocess.Popen[bytes] | None = None,
 ) -> None:
     """
     Block until the guest vsock agent responds or timeout is reached.
@@ -181,7 +181,7 @@ def check_guest_ready(
     *,
     timeout: float | None = None,
     poll_interval: float = 2.0,
-    process: subprocess.Popen | None = None,
+    process: subprocess.Popen[bytes] | None = None,
 ) -> tuple[bool, str]:
     """
     Return whether the guest vsock agent responds.
