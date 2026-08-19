@@ -161,6 +161,52 @@ You should:
     ```
     The displayed version should match the version used in sev-certify upstream.
 
+## Build Artifacts: Manifest and Changelog Files
+
+When building OS images with mkosi, two additional metadata files are generated alongside the image: the **manifest** file and the **changelog** file. These files provide detailed information about the packages included in the built image for traceability, debugging, and compliance purposes.
+
+### Manifest File (`<image-name>.manifest`)
+
+The manifest file is a JSON document that captures the complete list of packages installed in the image at build time. It serves as a Software Bill of Materials (SBOM) for the image.
+
+**Key Attributes:**
+
+| Attribute | Description |
+|-----------|-------------|
+| `manifest_version` | Version number of the manifest format |
+| `config.name` | Name of the built image (e.g., `guest-rocky-10`) |
+| `config.distribution` | Linux distribution name (e.g., `rocky`, `fedora`, `ubuntu`) |
+| `config.architecture` | Target CPU architecture (e.g., `x86-64`) |
+| `config.output_format` | Output format of the image (e.g., `uki` for Unified Kernel Image) |
+| `config.release` | Distribution release version |
+| `packages` | Array of installed packages, each containing `type`, `name`, `version`, and `architecture` |
+| `extension` | Reserved for future extensibility |
+
+**Use Cases:**
+- **Reproducibility:** Verify exactly which package versions are included in a specific image build
+- **Security Audits:** Identify vulnerable packages by cross-referencing with CVE databases
+- **Compliance:** Provide evidence of software components for regulatory requirements
+- **Debugging:** Troubleshoot issues by comparing package versions across different builds
+
+### Changelog File (`<image-name>.changelog`)
+
+The changelog file contains the aggregated changelog entries from all packages installed in the image. It provides a detailed history of changes for each package.
+
+**Key Attributes:**
+
+| Attribute | Description |
+|-----------|-------------|
+| `Packages` | Total count of packages in the image |
+| `Size` | Total size of all packages in bytes |
+| `SourcePackage` | Source RPM/DEB package name for each package |
+| `Changelog` | Chronological list of changes with dates, authors, versions, and descriptions |
+
+**Use Cases:**
+- **Change Tracking:** Understand what modifications were made to packages between releases
+- **Issue Investigation:** Trace when specific fixes or features were introduced
+- **Release Notes:** Generate documentation about changes included in an image update
+- **Audit Trail:** Maintain records of package evolution for compliance purposes
+
 ## Exceptions
 
 ### Important Note for Ubuntu Users
