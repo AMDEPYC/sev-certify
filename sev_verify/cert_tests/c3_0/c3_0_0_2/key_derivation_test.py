@@ -72,6 +72,7 @@ class TcbVersion:
 class ReportInfo:
     version: Optional[int] = None
     guest_svn: int = 0
+    vmpl: int = 0
     committed_tcb: TcbVersion = None
 
     def __post_init__(self):
@@ -103,6 +104,10 @@ def _parse_report_info(display_output: str) -> ReportInfo:
                   display_output, re.IGNORECASE)
     if m:
         info.guest_svn = int(m.group(1), 0)
+    m = re.search(r'^\s*VMPL\s*[:\s]+(0x[0-9a-fA-F]+|[0-9]+)',
+                  display_output, re.IGNORECASE | re.MULTILINE)
+    if m:
+        info.vmpl = int(m.group(1), 0)
     boundary = r'(?:Current|Committed|Reported|Launch)\s+TCB'
     m = re.search(rf'Committed\s+TCB\s*:?(.*?)(?={boundary}|\Z)',
                   display_output, re.DOTALL | re.IGNORECASE)
@@ -158,6 +163,7 @@ def parse_report(ctx: StepContext) -> StepHandlerResult:
     (ctx.artifact_dir / "report_info.txt").write_text(
         f"version={info.version}\n"
         f"guest_svn={info.guest_svn}\n"
+        f"vmpl={info.vmpl}\n"
         f"committed_bl={c.boot_loader}\n"
         f"committed_tee={c.tee}\n"
         f"committed_snp={c.snp}\n"
@@ -182,6 +188,8 @@ def _load_report_info(ctx: StepContext) -> ReportInfo:
             info.version = int(v)
         elif k == "guest_svn":
             info.guest_svn = int(v)
+        elif k == "vmpl":
+            info.vmpl = int(v)
         elif k == "committed_bl":
             info.committed_tcb.boot_loader = int(v)
         elif k == "committed_tee":
@@ -206,20 +214,28 @@ def test_determinism(ctx: StepContext) -> StepHandlerResult:
 
 
 def test_vmpl_isolation(ctx: StepContext) -> StepHandlerResult:
-    ok0, err0 = _derive_key(ctx, "vmpl0_key.bin", vmpl=0)
-    if not ok0:
-        return StepHandlerResult(exit_code=1, stderr=f"VMPL0 derivation failed: {err0}")
-    ok1, _ = _derive_key(ctx, "vmpl1_key.bin", vmpl=1)
-    if not ok1:
+    info = _load_report_info(ctx)
+    cur = info.vmpl
+    hi = cur + 1
+    ok_cur, err_cur = _derive_key(ctx, f"vmpl{cur}_key.bin", vmpl=cur)
+    if not ok_cur:
+        return StepHandlerResult(exit_code=1, stderr=f"VMPL{cur} derivation failed: {err_cur}")
+    if hi > 3:
         return StepHandlerResult(
             exit_code=0,
-            stdout="VMPL1 derivation rejected (expected if not running at VMPL0) — N/A",
+            stdout=f"Running at VMPL3 — no higher VMPL to compare against (N/A)",
         )
-    k0 = _read_key(ctx.artifact_dir / "vmpl0_key.bin")
-    k1 = _read_key(ctx.artifact_dir / "vmpl1_key.bin")
-    if k0 != k1:
-        return StepHandlerResult(exit_code=0, stdout="VMPL0 and VMPL1 keys differ (proper isolation)")
-    return StepHandlerResult(exit_code=1, stderr="VMPL0 and VMPL1 keys are identical")
+    ok_hi, _ = _derive_key(ctx, f"vmpl{hi}_key.bin", vmpl=hi)
+    if not ok_hi:
+        return StepHandlerResult(
+            exit_code=0,
+            stdout=f"VMPL{hi} derivation rejected — N/A",
+        )
+    k_cur = _read_key(ctx.artifact_dir / f"vmpl{cur}_key.bin")
+    k_hi = _read_key(ctx.artifact_dir / f"vmpl{hi}_key.bin")
+    if k_cur != k_hi:
+        return StepHandlerResult(exit_code=0, stdout=f"VMPL{cur} and VMPL{hi} keys differ (proper isolation)")
+    return StepHandlerResult(exit_code=1, stderr=f"VMPL{cur} and VMPL{hi} keys are identical")
 
 
 def test_root_key_difference(ctx: StepContext) -> StepHandlerResult:
