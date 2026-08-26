@@ -81,7 +81,26 @@ results/                 Output (gitignored)
 
 ## Requirements
 
-Python 3.11+ (uses `tomllib` from stdlib). No external packages.
+Python 3.11+ (uses `tomllib` from stdlib).
+
+One external package: **`cryptography`**, used by the ID block tests to generate
+ephemeral P-384 key pairs. `snpguest` signs the ID block and computes key
+digests but cannot generate keys, so this step cannot be delegated to the
+tooling.
+
+Install it from the distribution rather than with pip. The harness runs from the
+source tree as `python3 -m sev_verify`, which imports the package directly and
+never consults the dependency list in `pyproject.toml` — that list applies only
+if the project is installed (`pip install -e .`).
+
+```
+apt install python3-cryptography        # Debian / Ubuntu
+dnf install python3-cryptography        # Fedora / RHEL / CentOS / Rocky
+zypper install python3-cryptography     # openSUSE
+```
+
+Host images install it through `Packages=` in `images/host-*/mkosi.conf`; a
+freshly built image needs no extra step.
 
 ## Flags
 

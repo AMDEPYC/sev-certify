@@ -146,8 +146,8 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
     snpguest generate id-block, and updates ctx.profile with the resulting
     id_block and id_auth values so that vm_launch passes them to QEMU.
 
-    ID block metadata is read from environment variables with the same defaults
-    used by the generate-id-block systemd service:
+    ID block metadata is read from environment variables, falling back to the
+    DEFAULT_* constants in this module:
       ID_BLOCK_FAMILY_ID, ID_BLOCK_IMAGE_ID, ID_BLOCK_GUEST_SVN, ID_BLOCK_POLICY
 
     If guest_measurement.txt is absent (calculate_measurement was skipped or

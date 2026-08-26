@@ -20,3 +20,10 @@ module = "cert_tests.c3_0.c3_0_0_1.snphost_config_commit"
 scope = "mixed"
 level = "3.0.0-1"
 host_changes = true
+
+[[tests]]
+name = "id-block-test"
+description = "Verify ID block acceptance, report field binding, and launch rejection"
+module = "cert_tests.c3_0.c3_0_0_2.id_block_test"
+scope = "mixed"
+level = "3.0.0-1"
