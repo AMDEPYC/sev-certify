@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .environment import detect_environment
-from .os_info import update_environment_with_guest_os
+from .os_info import update_environment_with_guest_info
 from .models import (
     CertificationDefinition,
     CertificationResult,
@@ -407,7 +407,7 @@ def execute_test(
                     sr, new_launch = run_vm_launch_step(step, profile)
                     launch = new_launch
                     if launch is not None and launch.ok and environment is not None:
-                        update_environment_with_guest_os(environment, launch.profile)
+                        update_environment_with_guest_info(environment, launch.profile)
             elif step.kind == "vm_stop":
                 if launch is None:
                     sr = StepResult(
@@ -433,7 +433,7 @@ def execute_test(
                     if launch is None:
                         launch = profile.vm_launch()
                         if launch.ok and environment is not None:
-                            update_environment_with_guest_os(environment, launch.profile)
+                            update_environment_with_guest_info(environment, launch.profile)
                     if not launch.ok:
                         sr = StepResult(
                             step=step,

@@ -195,6 +195,10 @@ def write_markdown(
             env_lines.append(
                 f"- **snpguest (host):** {environment['snpguest_version']}"
             )
+        if environment.get("guest_snpguest_version"):
+            env_lines.append(
+                f"- **snpguest (guest):** {environment['guest_snpguest_version']}"
+            )
         if env_lines:
             w("## Environment")
             w("")

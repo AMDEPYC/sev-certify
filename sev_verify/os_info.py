@@ -109,6 +109,27 @@ def format_os_info(os_info: dict[str, str | None]) -> str | None:
     return name or release or None
 
 
+def get_guest_snpguest_version(profile: "VMProfile") -> str | None:
+    """Read the guest's snpguest version via vsock.
+
+    Reported separately from the host's because the two are installed
+    independently, and a guest-side attestation failure cannot be attributed
+    without knowing which build produced it.
+
+    Requires an active guest with vsock agent; returns None otherwise.
+    """
+    from .guest_vsock import run_guest_command, GuestVsockError
+
+    try:
+        result = run_guest_command(profile, "snpguest --version", timeout=10)
+    except GuestVsockError:
+        return None
+    if result.exit_code != 0:
+        return None
+    first_line = result.stdout.strip().splitlines()
+    return first_line[0].strip() if first_line else None
+
+
 def update_environment_with_guest_os(
     environment: dict[str, str | None],
     profile: "VMProfile",
@@ -126,3 +147,18 @@ def update_environment_with_guest_os(
     environment["guest_os_release"] = guest_info.get("guest_os_release")
     environment["guest_os_pretty_name"] = guest_info.get("guest_os_pretty_name")
     environment["guest_os_id"] = guest_info.get("guest_os_id")
+
+
+def update_environment_with_guest_info(
+    environment: dict[str, str | None],
+    profile: "VMProfile",
+) -> None:
+    """Update environment in-place with everything readable from the guest.
+
+    Currently the guest OS identity and the guest's snpguest version. Both are
+    best-effort and are collected once, on the first successful launch.
+    """
+    already_done = "guest_snpguest_version" in environment
+    update_environment_with_guest_os(environment, profile)
+    if not already_done:
+        environment["guest_snpguest_version"] = get_guest_snpguest_version(profile)
