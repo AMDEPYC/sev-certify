@@ -75,6 +75,110 @@ def _get_ovmf_version(path: str) -> str | None:
     return None
 
 
+def _run_tool(args: list[str], timeout: int = 5) -> str | None:
+    """Run *args* and return stripped stdout, or None on any failure."""
+    resolved = shutil.which(args[0])
+    if not resolved:
+        return None
+    try:
+        proc = subprocess.run(
+            [resolved, *args[1:]],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    return out or None
+
+
+def _get_tool_version(tool: str) -> str | None:
+    """Return ``<tool> --version`` output, e.g. ``snpguest 0.10.0``."""
+    out = _run_tool([tool, "--version"])
+    return out.splitlines()[0].strip() if out else None
+
+
+def _get_sev_firmware_version() -> str | None:
+    """Return the SEV firmware version the PSP is currently running.
+
+    This is the firmware actually in effect, which is not necessarily the one
+    the BIOS supplied: the ``ccp`` driver loads ``/lib/firmware/amd/*.sbin`` at
+    boot when present, so it varies with the host OS image rather than with the
+    platform.  Requires root; returns None otherwise.
+    """
+    out = _run_tool(["snphost", "show", "version"])
+    return out.splitlines()[0].strip() if out else None
+
+
+def _get_reported_tcb() -> str | None:
+    """Return the reported TCB as a single line, e.g. ``bootloader=9 tee=0 …``.
+
+    ``snphost show tcb`` prints a multi-line block; it is condensed here so the
+    value fits on one line of the environment report.
+    """
+    out = _run_tool(["snphost", "show", "tcb"])
+    if not out:
+        return None
+    wanted = {
+        "boot loader": "bootloader",
+        "tee": "tee",
+        "snp": "snp",
+        "microcode": "microcode",
+        "fmc": "fmc",
+    }
+    found: dict[str, str] = {}
+    for line in out.splitlines():
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        short = wanted.get(key.strip().lower())
+        if short and value.strip():
+            found[short] = value.strip()
+    if not found:
+        return None
+    order = ("bootloader", "tee", "snp", "microcode", "fmc")
+    return " ".join(f"{k}={found[k]}" for k in order if k in found)
+
+
+def _get_host_cpu() -> dict[str, str | None]:
+    """Return the host CPU model name and CPUID family/model/stepping.
+
+    Reported because generation-dependent behaviour keys on family and model —
+    both in this harness and in the tooling it drives — so a failure that turns
+    on the processor generation is otherwise undiagnosable from a result alone.
+    """
+    fields: dict[str, str] = {}
+    try:
+        with open("/proc/cpuinfo") as fh:
+            for line in fh:
+                key, sep, value = line.partition(":")
+                if not sep:
+                    continue
+                key = key.strip().lower()
+                if key in ("model name", "cpu family", "model", "stepping"):
+                    fields.setdefault(key, value.strip())
+                if len(fields) == 4:
+                    break
+    except Exception:
+        return {"host_cpu_model": None, "host_cpu_id": None}
+
+    def _hex(name: str) -> str | None:
+        raw = fields.get(name)
+        try:
+            return f"0x{int(raw):x}"
+        except (TypeError, ValueError):
+            return None
+
+    family, model, stepping = _hex("cpu family"), _hex("model"), _hex("stepping")
+    cpu_id = None
+    if family and model:
+        cpu_id = f"family {family} model {model}"
+        if stepping:
+            cpu_id += f" stepping {stepping}"
+    return {"host_cpu_model": fields.get("model name"), "host_cpu_id": cpu_id}
+
+
 def detect_environment(
     *,
     qemu_binary: str = "qemu-system-x86_64",
@@ -85,6 +189,7 @@ def detect_environment(
     All detection is best-effort: failures produce ``None`` values.
     """
     host_os = get_host_os_info()
+    host_cpu = _get_host_cpu()
     return {
         "qemu_version": _get_qemu_version(qemu_binary),
         "qemu_binary": qemu_binary,
@@ -94,4 +199,12 @@ def detect_environment(
         "host_os_name": host_os.get("host_os_name"),
         "host_os_release": host_os.get("host_os_release"),
         "host_os_pretty_name": host_os.get("host_os_pretty_name"),
+        # SEV-specific facts.  These are what distinguish two hosts that look
+        # identical by OS and QEMU version but behave differently under SNP.
+        "sev_firmware_version": _get_sev_firmware_version(),
+        "reported_tcb": _get_reported_tcb(),
+        "snphost_version": _get_tool_version("snphost"),
+        "snpguest_version": _get_tool_version("snpguest"),
+        "host_cpu_model": host_cpu["host_cpu_model"],
+        "host_cpu_id": host_cpu["host_cpu_id"],
     }

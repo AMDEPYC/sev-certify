@@ -176,6 +176,25 @@ def write_markdown(
             env_lines.append(f"- **OVMF:** {environment['ovmf_version']}")
         elif environment.get("ovmf_path"):
             env_lines.append(f"- **OVMF:** {environment['ovmf_path']}")
+        if environment.get("host_cpu_model"):
+            cpu = environment["host_cpu_model"]
+            if environment.get("host_cpu_id"):
+                cpu = f"{cpu} ({environment['host_cpu_id']})"
+            env_lines.append(f"- **Host CPU:** {cpu}")
+        elif environment.get("host_cpu_id"):
+            env_lines.append(f"- **Host CPU:** {environment['host_cpu_id']}")
+        if environment.get("sev_firmware_version"):
+            env_lines.append(
+                f"- **SEV firmware:** {environment['sev_firmware_version']}"
+            )
+        if environment.get("reported_tcb"):
+            env_lines.append(f"- **Reported TCB:** {environment['reported_tcb']}")
+        if environment.get("snphost_version"):
+            env_lines.append(f"- **snphost:** {environment['snphost_version']}")
+        if environment.get("snpguest_version"):
+            env_lines.append(
+                f"- **snpguest (host):** {environment['snpguest_version']}"
+            )
         if env_lines:
             w("## Environment")
             w("")
