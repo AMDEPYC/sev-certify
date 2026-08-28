@@ -141,6 +141,24 @@ def _get_reported_tcb() -> str | None:
     return " ".join(f"{k}={found[k]}" for k in order if k in found)
 
 
+#: Written by modules/build/common/snpguest/mkosi.build at image build time.
+SNPGUEST_TAG_FILE = "/usr/local/share/sev-certify/snpguest-tag"
+
+
+def _get_snpguest_tag() -> str | None:
+    """Return the snpguest release tag this image was built with.
+
+    The image build resolves "latest" at build time unless SNPGUEST_TAG is
+    pinned, so the installed tooling is not implied by the source revision.
+    Absent on hosts that were not built by this project.
+    """
+    try:
+        with open(SNPGUEST_TAG_FILE) as fh:
+            return fh.read().strip() or None
+    except Exception:
+        return None
+
+
 def _get_host_cpu() -> dict[str, str | None]:
     """Return the host CPU model name and CPUID family/model/stepping.
 
@@ -205,6 +223,7 @@ def detect_environment(
         "reported_tcb": _get_reported_tcb(),
         "snphost_version": _get_tool_version("snphost"),
         "snpguest_version": _get_tool_version("snpguest"),
+        "snpguest_tag": _get_snpguest_tag(),
         "host_cpu_model": host_cpu["host_cpu_model"],
         "host_cpu_id": host_cpu["host_cpu_id"],
     }

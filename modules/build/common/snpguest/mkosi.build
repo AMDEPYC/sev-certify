@@ -8,3 +8,10 @@ LATEST_TAG="${SNPGUEST_TAG:-$(curl -s https://api.github.com/repos/virtee/snpgue
 # Download and install into DESTDIR with correct permissions
 curl -fsSL "https://github.com/virtee/snpguest/releases/download/${LATEST_TAG}/snpguest" \
   | install -D -m 0755 /dev/stdin "${DESTDIR}/usr/local/bin/snpguest"
+
+# Record which tag was actually installed.  Unless SNPGUEST_TAG is set, the
+# line above resolves "latest" at build time, so two builds of identical
+# source can contain different tooling with nothing to say so.  sev_verify
+# reads this file and reports it, making each image self-describing.
+printf '%s\n' "${LATEST_TAG}" \
+  | install -D -m 0644 /dev/stdin "${DESTDIR}/usr/local/share/sev-certify/snpguest-tag"
