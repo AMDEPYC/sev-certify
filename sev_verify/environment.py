@@ -194,20 +194,29 @@ def summarize_report(path: str | os.PathLike[str]) -> str | None:
     return " ".join(parts)
 
 
+#: Report artifacts to describe, in no particular preference order — the newest
+#: wins.  ``tsm-report.bin`` comes from the kernel's configfs-TSM interface and
+#: exists even when the snpguest-produced ``report.bin`` does not, since that
+#: command declines to write a report it cannot classify.
+REPORT_ARTIFACT_NAMES = ("report.bin", "tsm-report.bin")
+
+
 def find_recent_report(
     artifacts_root: str | os.PathLike[str],
     since: float,
 ) -> "Path | None":
-    """Return the newest ``report.bin`` under *artifacts_root* newer than *since*.
+    """Return the newest report artifact under *artifacts_root* newer than *since*.
 
     The mtime bound stops a report left behind by an earlier run being described
     as though this run had produced it.
     """
+    candidates: list[Path] = []
     try:
-        candidates = [
-            p for p in Path(artifacts_root).rglob("report.bin")
-            if p.stat().st_mtime >= since
-        ]
+        for name in REPORT_ARTIFACT_NAMES:
+            candidates += [
+                p for p in Path(artifacts_root).rglob(name)
+                if p.stat().st_mtime >= since
+            ]
     except Exception:
         return None
     if not candidates:

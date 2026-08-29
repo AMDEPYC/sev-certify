@@ -159,6 +159,31 @@ def steps() -> list[BaseStep]:
             host_dest="request.bin",
             timeout=120,
         ),
+        # Capture the report a second way, through the kernel's vendor-neutral
+        # configfs-TSM interface, which returns the raw bytes without parsing
+        # them.  This is diagnostic rather than a check: when the snpguest steps
+        # above fail because the report cannot be classified, they leave no
+        # artifact behind, and the report is then the one thing needed to find
+        # out why.  Typed "info" so a kernel without configfs-TSM support costs
+        # nothing.
+        Step.for_guest(
+            name="Capture report via configfs-TSM",
+            type="info",
+            command=(
+                "D=/sys/kernel/config/tsm/report/sev_verify; "
+                "rmdir $D 2>/dev/null; mkdir $D || exit 1; "
+                "head -c 64 /dev/urandom > $D/inblob && cat $D/outblob > /tmp/tsm-report.bin; "
+                "rc=$?; rmdir $D 2>/dev/null; exit $rc"
+            ),
+            timeout=60,
+        ),
+        Step.for_guest_pull(
+            name="Pull configfs-TSM report",
+            type="info",
+            guest_src="/tmp/tsm-report.bin",
+            host_dest="tsm-report.bin",
+            timeout=120,
+        ),
         Step.for_host(
             name="Fetch certificate chain from kds",
             type="setup",
