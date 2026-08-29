@@ -9,7 +9,7 @@ import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .environment import detect_environment
+from .environment import detect_environment, find_recent_report, summarize_report
 from .os_info import update_environment_with_guest_info
 from .models import (
     CertificationDefinition,
@@ -711,6 +711,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Warning: no tests match level filter(s) {levels!r} "
                   f"in certification {cert.version}", file=sys.stderr)
             continue
+        run_started = time.time()
         cr = execute_certification(
             cert,
             guest_path,
@@ -720,6 +721,14 @@ def main(argv: list[str] | None = None) -> int:
             environment=environment,
         )
         cert_results.append(cr)
+
+        # Describe a report this run produced, if any.  Done here rather than in
+        # a test because it is environment, not a result: which report version
+        # and CPUID the firmware emitted determines how every consumer parses it.
+        if environment is not None and not environment.get("report_summary"):
+            report_path = find_recent_report(args.artifacts_dir, run_started)
+            if report_path is not None:
+                environment["report_summary"] = summarize_report(report_path)
         total_tests += len(cr.test_results)
         total_passed += sum(1 for tr in cr.test_results if tr.result == "pass")
 

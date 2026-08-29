@@ -7,6 +7,8 @@ import platform
 import shutil
 import subprocess
 
+from pathlib import Path
+
 from .os_info import get_host_os_info
 
 
@@ -141,6 +143,78 @@ def _get_reported_tcb() -> str | None:
     return " ".join(f"{k}={found[k]}" for k in order if k in found)
 
 
+def _get_platform_identifier() -> str | None:
+    """Return the platform identifier from ``snphost show identifier``."""
+    out = _run_tool(["snphost", "show", "identifier"])
+    return out.splitlines()[0].strip() if out else None
+
+
+# Offsets into the SNP attestation report, per the ABI specification (56860).
+# CPUID_FAM_ID / MOD_ID / STEP exist only from report version 3 onwards.
+_REPORT_CPUID_FAM = 0x188
+_REPORT_CPUID_MOD = 0x189
+_REPORT_CPUID_STEP = 0x18A
+_REPORT_CHIP_ID = 0x1A0
+_REPORT_CHIP_ID_LEN = 64
+_REPORT_MIN_LEN = _REPORT_CHIP_ID + _REPORT_CHIP_ID_LEN
+
+
+def summarize_report(path: str | os.PathLike[str]) -> str | None:
+    """Summarize a report: version, CPUID triple, and whether CHIP_ID is zeroed.
+
+    These are the fields that decide how a report is *parsed*, as distinct from
+    what it attests.  Consumers pick a TCB layout from the processor generation,
+    which they derive from the CPUID bytes, so a report carrying unexpected
+    values there is rejected before any of its contents are read.
+
+    CHIP_ID is reported as zeroed or present because ``MASK_CHIP_ID`` zeroes it
+    and ``snphost show`` offers no way to read that setting back: a zeroed
+    CHIP_ID is the only externally visible sign that masking is in effect.
+    """
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except Exception:
+        return None
+    if len(data) < _REPORT_MIN_LEN:
+        return None
+
+    version = int.from_bytes(data[0:4], "little")
+    parts = [f"version={version}"]
+    if version >= 3:
+        parts.append(
+            "cpuid=0x{:02x}/0x{:02x}/0x{:02x}".format(
+                data[_REPORT_CPUID_FAM],
+                data[_REPORT_CPUID_MOD],
+                data[_REPORT_CPUID_STEP],
+            )
+        )
+    chip_id = data[_REPORT_CHIP_ID:_REPORT_CHIP_ID + _REPORT_CHIP_ID_LEN]
+    parts.append("chip_id=" + ("zeroed" if not any(chip_id) else "present"))
+    return " ".join(parts)
+
+
+def find_recent_report(
+    artifacts_root: str | os.PathLike[str],
+    since: float,
+) -> "Path | None":
+    """Return the newest ``report.bin`` under *artifacts_root* newer than *since*.
+
+    The mtime bound stops a report left behind by an earlier run being described
+    as though this run had produced it.
+    """
+    try:
+        candidates = [
+            p for p in Path(artifacts_root).rglob("report.bin")
+            if p.stat().st_mtime >= since
+        ]
+    except Exception:
+        return None
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
 #: Written by modules/build/common/snpguest/mkosi.build at image build time.
 SNPGUEST_TAG_FILE = "/usr/local/share/sev-certify/snpguest-tag"
 
@@ -224,6 +298,7 @@ def detect_environment(
         "snphost_version": _get_tool_version("snphost"),
         "snpguest_version": _get_tool_version("snpguest"),
         "snpguest_tag": _get_snpguest_tag(),
+        "platform_identifier": _get_platform_identifier(),
         "host_cpu_model": host_cpu["host_cpu_model"],
         "host_cpu_id": host_cpu["host_cpu_id"],
     }
