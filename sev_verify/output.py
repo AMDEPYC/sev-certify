@@ -195,6 +195,14 @@ def write_markdown(
             env_lines.append(
                 f"- **Attestation report:** {environment['report_summary']}"
             )
+        if environment.get("sev_firmware_source"):
+            env_lines.append(
+                f"- **SEV firmware blobs:** {environment['sev_firmware_source']}"
+            )
+        if environment.get("sev_firmware_log"):
+            env_lines.append(
+                f"- **SEV driver log:** `{environment['sev_firmware_log']}`"
+            )
         if environment.get("reported_tcb"):
             env_lines.append(f"- **Reported TCB:** {environment['reported_tcb']}")
         if environment.get("snphost_version"):

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import glob
+import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 
@@ -141,6 +144,61 @@ def _get_reported_tcb() -> str | None:
         return None
     order = ("bootloader", "tee", "snp", "microcode", "fmc")
     return " ".join(f"{k}={found[k]}" for k in order if k in found)
+
+
+#: Blobs the ccp driver loads at boot, overriding BIOS-supplied firmware.
+SEV_FIRMWARE_GLOB = "/lib/firmware/amd/amd_sev_*.sbin"
+
+
+def _get_sev_firmware_source() -> str | None:
+    """Report which SEV firmware blobs are available for the driver to load.
+
+    The ``ccp`` driver loads these at boot when present, replacing the firmware
+    the BIOS supplied; when none is present the platform keeps running the
+    BIOS-supplied firmware for the life of the boot.  The absence is therefore
+    as meaningful as the presence, and is reported explicitly rather than as a
+    missing field: it says the runtime firmware is the platform's own, not the
+    host OS's choice, which changes how every other firmware-derived value in
+    this report should be read.
+
+    Identified by digest as well as name, since two builds of the same blob
+    share a filename and may share an API version while differing in behaviour.
+    """
+    paths = sorted(glob.glob(SEV_FIRMWARE_GLOB))
+    if not paths:
+        return "none present — BIOS-supplied firmware retained"
+    parts: list[str] = []
+    for path in paths:
+        try:
+            with open(path, "rb") as fh:
+                blob = fh.read()
+        except OSError:
+            continue
+        digest = hashlib.sha256(blob).hexdigest()[:12]
+        parts.append(f"{os.path.basename(path)} ({len(blob)}B sha256:{digest})")
+    return ", ".join(parts) or None
+
+
+def _get_sev_firmware_log(max_lines: int = 4, max_chars: int = 400) -> str | None:
+    """Return the driver's own SEV lines from the kernel log, verbatim.
+
+    Quoted rather than parsed.  These lines carry the firmware build number that
+    ``snphost show version`` omits, and report whether an update was applied at
+    boot — but their wording varies across kernels, so a parser would silently
+    yield nothing on the versions it did not anticipate.  Recording what the
+    driver actually said keeps the field useful even then.
+
+    Requires a readable kernel log; returns None otherwise.
+    """
+    out = _run_tool(["dmesg"], timeout=10)
+    if not out:
+        return None
+    matcher = re.compile(r"\bccp\b|SEV[- ]SNP API|SEV API|sev firmware", re.IGNORECASE)
+    lines = [ln.strip() for ln in out.splitlines() if matcher.search(ln)]
+    if not lines:
+        return None
+    joined = " | ".join(lines[-max_lines:])
+    return joined[:max_chars] + ("…" if len(joined) > max_chars else "")
 
 
 def _get_platform_identifier() -> str | None:
@@ -303,6 +361,8 @@ def detect_environment(
         # SEV-specific facts.  These are what distinguish two hosts that look
         # identical by OS and QEMU version but behave differently under SNP.
         "sev_firmware_version": _get_sev_firmware_version(),
+        "sev_firmware_source": _get_sev_firmware_source(),
+        "sev_firmware_log": _get_sev_firmware_log(),
         "reported_tcb": _get_reported_tcb(),
         "snphost_version": _get_tool_version("snphost"),
         "snpguest_version": _get_tool_version("snpguest"),
