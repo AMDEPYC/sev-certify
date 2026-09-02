@@ -47,15 +47,17 @@ def calculate_measurement(ctx: StepContext) -> StepHandlerResult:
             stderr=str(e),
         )
 
+    cmd = [
+        "snpguest", "generate", "measurement",
+        "--vcpu-type", "EPYC-v4",
+        "--ovmf", str(ovmf_path),
+        "--kernel", str(ctx.guest_path),
+        "--output-format", "hex",
+        "--measurement-file", str(measurement_file)
+    ]
+    cmd_str = " ".join(cmd)
     result = subprocess.run(
-        [
-            "snpguest", "generate", "measurement",
-            "--vcpu-type", "EPYC-v4",
-            "--ovmf", str(ovmf_path),
-            "--kernel", str(ctx.guest_path),
-            "--output-format", "hex",
-            "--measurement-file", str(measurement_file),
-        ],
+        cmd,
         capture_output=True,
         text=True,
         check=False,
@@ -65,12 +67,14 @@ def calculate_measurement(ctx: StepContext) -> StepHandlerResult:
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
+            command=cmd_str,
         )
 
     expected_measurement = measurement_file.read_text().strip()
     return StepHandlerResult(
         exit_code=0,
         stdout=f"Calculated expected measurement: {expected_measurement}",
+        command=cmd_str,
     )
 
 
@@ -87,13 +91,15 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
 
     expected_measurement = measurement_file.read_text().strip()
     request_data = "0x" + str(request_file.read_bytes().hex())
+    cmd = [
+        "snpguest", "verify", "attestation",
+        str(ctx.artifact_dir), str(report_file),
+        "--measurement", str(expected_measurement),
+        "--report-data", str(request_data),
+    ]
+    cmd_str = " ".join(cmd)
     result = subprocess.run(
-        [
-            "snpguest", "verify", "attestation",
-            str(ctx.artifact_dir), str(report_file),
-            "--measurement", str(expected_measurement),
-            "--report-data", str(request_data),
-        ],
+        cmd,
         capture_output=True,
         text=True,
         check=False,
@@ -103,11 +109,13 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
             exit_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
+            command=cmd_str,
         )
 
     return StepHandlerResult(
         exit_code=0,
         stdout="Successfully verified report data and measurement",
+        command=cmd_str,
     )
 
 
@@ -132,6 +140,7 @@ def steps() -> list[BaseStep]:
         ),
         Step.for_vm_launch(
             name="Launch SEV-SNP guest",
+            guest_id="vm-1",
             type="setup",
             timeout=300,
         ).add_hint(
@@ -194,4 +203,5 @@ def steps() -> list[BaseStep]:
             type="info",
             timeout=60,
         ),
+
     ]

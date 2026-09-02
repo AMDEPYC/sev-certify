@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import time
 from importlib import import_module
@@ -169,8 +170,14 @@ def run_step(step: BaseStep, guest_path: Path, artifact_dir: Path | None = None)
 def run_vm_launch_step(
     step: BaseStep, profile: VMProfile,
 ) -> tuple[StepResult, VMLaunchResult | None]:
-    """Start the guest described by ``profile``. Returns ``(StepResult, launch or None)``."""
+    """Start the guest described by ``profile``. Returns ``(StepResult, launch or None)``.
+
+    If the step has a ``guest_id`` set, it overrides the profile's guest_id.
+    """
     start = time.monotonic()
+    # Override profile's guest_id if the step specifies one
+    if step.guest_id:
+        profile = replace(profile, guest_id=step.guest_id)
     try:
         launch = profile.vm_launch()
     except VMProfileError as exc:
@@ -209,6 +216,7 @@ def run_vm_launch_step(
 def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
     """Terminate QEMU for ``launch`` (``stop_vm``; ``step.timeout`` is the wait/kill window)."""
     start = time.monotonic()
+    stop_cmd = f"kill -15 {launch.pid}"
     try:
         stop_vm(launch, timeout=float(step.timeout))
     except OSError as exc:
@@ -218,6 +226,7 @@ def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
             result="error",
             stderr=str(exc),
             duration_ms=duration_ms,
+            command=stop_cmd,
         )
     duration_ms = int((time.monotonic() - start) * 1000)
     msg = "Guest VM stopped"
@@ -228,6 +237,7 @@ def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
         exit_code=0 if passed else 1,
         stdout=msg,
         duration_ms=duration_ms,
+        command=stop_cmd,
     )
 
 
@@ -269,6 +279,7 @@ def run_guest_pull_step(
     host_path = Path(step.host_dest)
     if artifact_dir is not None and not host_path.is_absolute():
         host_path = artifact_dir / host_path
+    guest_cmd = f"base64 {shlex.quote(step.guest_src)}"
     try:
         pull_guest_file_to_host(
             profile,
@@ -283,6 +294,7 @@ def run_guest_pull_step(
             result="error",
             stderr=str(exc),
             duration_ms=duration_ms,
+            command=guest_cmd,
         )
     duration_ms = int((time.monotonic() - start) * 1000)
     passed = _check_expected_values(step, 0, "")
@@ -290,7 +302,9 @@ def run_guest_pull_step(
         step=step,
         result="pass" if passed else "fail",
         exit_code=0,
+        stdout=f"Pulled {step.guest_src} -> {host_path}",
         duration_ms=duration_ms,
+        command=guest_cmd,
     )
 
 
@@ -357,6 +371,7 @@ def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
         stdout=hr.stdout or None,
         stderr=hr.stderr or None,
         duration_ms=duration_ms,
+        command=hr.command,
     )
 
 
@@ -366,6 +381,7 @@ def effective_vm_profile(
     *,
     qemu_binary: str | None = None,
     ovmf_path: str | None = None,
+    artifact_dir: Path | None = None,
 ) -> VMProfile:
     """
     Merge CLI guest path (and optional QEMU / OVMF overrides) into a profile.
@@ -373,6 +389,9 @@ def effective_vm_profile(
     The ``path_to_guest`` argument always supplies the bootable guest image;
     ``declared`` supplies QEMU, vsock, and SEV-SNP options from the test module.
     Non-``None`` ``qemu_binary`` / ``ovmf_path`` override the merged profile.
+
+    When ``artifact_dir`` is provided, guest log files are written there instead
+    of /tmp to avoid conflicts with concurrent test runs.
     """
 
     if declared is None:
@@ -384,4 +403,10 @@ def effective_vm_profile(
         base = replace(base, qemu_binary=qemu_binary)
     if ovmf_path is not None:
         base = replace(base, ovmf_path=ovmf_path)
+    if artifact_dir is not None:
+        base = replace(
+            base,
+            guest_error_log=str(artifact_dir / "qemu-error.log"),
+            guest_boot_log=str(artifact_dir / "qemu-boot.log"),
+        )
     return base

@@ -50,6 +50,9 @@ class BaseStep:
     handler: str = ""
     guest_src: str = ""
     host_dest: str = ""
+    # Guest identifier for vm_launch steps (used in debug log directory names).
+    # If not set, defaults to a generated UUID.
+    guest_id: str = ""
     # Diagnostic hints shown on failure: list of (grep_pattern, message) pairs.
     # If *grep_pattern* appears in stderr or stdout, *message* is printed as a hint.
     hints: list[tuple[str, str]] = field(default_factory=list)
@@ -72,32 +75,49 @@ class BaseStep:
                 f"Step {self.name!r}: timeout must be positive, got {self.timeout}"
             )
 
-        if self.kind in ("vm_launch", "vm_stop"):
+        if self.kind == "vm_launch":
             if self.command:
                 raise ValueError(
-                    f"Step {self.name!r}: {self.kind} steps must use an empty command"
+                    f"Step {self.name!r}: vm_launch steps must use an empty command"
                 )
             if self.guest_src or self.host_dest:
                 raise ValueError(
-                    f"Step {self.name!r}: {self.kind} steps must not set guest_src/host_dest"
+                    f"Step {self.name!r}: vm_launch steps must not set guest_src/host_dest"
                 )
             if self.handler:
                 raise ValueError(
-                    f"Step {self.name!r}: {self.kind} steps must not set handler"
+                    f"Step {self.name!r}: vm_launch steps must not set handler"
+                )
+        elif self.kind == "vm_stop":
+            if self.command:
+                raise ValueError(
+                    f"Step {self.name!r}: vm_stop steps must use an empty command"
+                )
+            if self.guest_src or self.host_dest:
+                raise ValueError(
+                    f"Step {self.name!r}: vm_stop steps must not set guest_src/host_dest"
+                )
+            if self.handler:
+                raise ValueError(
+                    f"Step {self.name!r}: vm_stop steps must not set handler"
+                )
+            if self.guest_id:
+                raise ValueError(
+                    f"Step {self.name!r}: vm_stop steps must not set guest_id (use it on vm_launch)"
                 )
         elif self.kind == "host":
             if not self.command:
                 raise ValueError(f"Step {self.name!r}: host steps require a non-empty command")
-            if self.guest_src or self.host_dest or self.handler:
+            if self.guest_src or self.host_dest or self.handler or self.guest_id:
                 raise ValueError(
-                    f"Step {self.name!r}: host steps must only set command (not handler/paths)"
+                    f"Step {self.name!r}: host steps must only set command (not handler/paths/guest_id)"
                 )
         elif self.kind == "guest":
             if not self.command:
                 raise ValueError(f"Step {self.name!r}: guest steps require a non-empty command")
-            if self.guest_src or self.host_dest or self.handler:
+            if self.guest_src or self.host_dest or self.handler or self.guest_id:
                 raise ValueError(
-                    f"Step {self.name!r}: guest steps must only set command (not handler/paths)"
+                    f"Step {self.name!r}: guest steps must only set command (not handler/paths/guest_id)"
                 )
         elif self.kind == "guest_pull":
             if not self.guest_src:
@@ -108,9 +128,9 @@ class BaseStep:
                 raise ValueError(
                     f"Step {self.name!r}: guest_pull steps require host_dest (path on host)"
                 )
-            if self.command or self.handler:
+            if self.command or self.handler or self.guest_id:
                 raise ValueError(
-                    f"Step {self.name!r}: guest_pull steps must not set command or handler"
+                    f"Step {self.name!r}: guest_pull steps must not set command, handler, or guest_id"
                 )
         elif self.kind == "callable":
             if not self.handler:
@@ -118,9 +138,9 @@ class BaseStep:
                     f"Step {self.name!r}: callable steps require a non-empty handler "
                     f"(function name on the test module)"
                 )
-            if self.command or self.guest_src or self.host_dest:
+            if self.command or self.guest_src or self.host_dest or self.guest_id:
                 raise ValueError(
-                    f"Step {self.name!r}: callable steps must not set command, guest_src, or host_dest"
+                    f"Step {self.name!r}: callable steps must not set command, guest_src, host_dest, or guest_id"
                 )
 
         _validate_expected_result_format(self.name, self.expected_result)
@@ -166,8 +186,8 @@ class Step:
     def guest(self, command: str) -> BaseStep:
         return BaseStep(kind="guest", command=command, **self._common())
 
-    def vm_launch(self) -> BaseStep:
-        return BaseStep(kind="vm_launch", **self._common())
+    def vm_launch(self, guest_id: str = "") -> BaseStep:
+        return BaseStep(kind="vm_launch", guest_id=guest_id, **self._common())
 
     def vm_stop(self) -> BaseStep:
         return BaseStep(kind="vm_stop", **self._common())
@@ -219,10 +239,11 @@ class Step:
         *,
         expected_result: str = "exit_code:0",
         timeout: int = 10,
+        guest_id: str = "",
     ) -> BaseStep:
         return cls(
             name=name, type=type, expected_result=expected_result, timeout=timeout
-        ).vm_launch()
+        ).vm_launch(guest_id=guest_id)
 
     @classmethod
     def for_vm_stop(
@@ -343,6 +364,7 @@ class StepResult:
     stdout: str | None = None
     stderr: str | None = None
     duration_ms: int | None = None
+    command: str | None = None
 
 
 @dataclass
@@ -352,6 +374,7 @@ class StepHandlerResult:
     exit_code: int = 0
     stdout: str = ""
     stderr: str = ""
+    command: str | None = None
 
 
 @dataclass

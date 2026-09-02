@@ -268,3 +268,17 @@ def pull_guest_file_to_host(
     host_path = Path(host_path)
     host_path.parent.mkdir(parents=True, exist_ok=True)
     host_path.write_bytes(data)
+
+
+def fetch_guest_journal(
+    profile: VMProfile,
+    *,
+    timeout: float | None = None,
+) -> GuestCommandResult:
+    """
+    Fetch the guest's journald logs via vsock.
+
+    Runs ``journalctl --no-pager -b`` on the guest to get all logs from current boot.
+    """
+    cmd = "journalctl --no-pager -b"
+    return run_guest_command(profile, cmd, timeout=timeout)

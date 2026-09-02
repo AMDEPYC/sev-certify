@@ -125,11 +125,13 @@ def _parse_report_tcb_sections(report_path: str) -> dict[str, dict[str, str]]:
 
 def _verify_result(mode: str) -> StepHandlerResult:
     """Compare Reported vs Platform TCB; used by callable steps and the CLI."""
+    cmd = "snphost show tcb"
     proc = _run_snphost_tcb()
     if proc.returncode != 0:
         return StepHandlerResult(
             exit_code=1,
             stderr=f"snphost show tcb failed: {proc.stderr.strip()}",
+            command=cmd,
         )
 
     sections = _parse_tcb_sections(proc.stdout)
@@ -144,13 +146,14 @@ def _verify_result(mode: str) -> StepHandlerResult:
             f"  Reported: {reported}",
             f"  Platform: {platform}",
         ]
-        return StepHandlerResult(exit_code=1, stderr="\n".join(lines))
+        return StepHandlerResult(exit_code=1, stderr="\n".join(lines), command=cmd)
     if mode == "verify-differ" and match:
         return StepHandlerResult(
             exit_code=1,
             stderr="FAIL: Reported should differ from Platform after config set",
+            command=cmd,
         )
-    return StepHandlerResult(exit_code=0)
+    return StepHandlerResult(exit_code=0, command=cmd)
 
 
 def verify_match(_ctx: StepContext) -> StepHandlerResult:
@@ -433,6 +436,7 @@ def steps() -> list[BaseStep]:
         # 4. Boot a fresh VM (TCB was lowered before boot)
         Step.for_vm_launch(
             name="Launch SEV-SNP guest",
+            guest_id="vm-1",
             type="required",
             timeout=300,
         ).add_hint(

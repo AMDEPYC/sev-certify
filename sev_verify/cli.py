@@ -32,6 +32,7 @@ from .runner import (
     run_vm_stop_step,
     test_artifact_dir,
 )
+from .step_log import StepLogger
 from .vm_profile import (
     DEFAULT_QEMU_BINARY,
     find_ovmf_path,
@@ -39,6 +40,7 @@ from .vm_profile import (
     VMProfileError,
     stop_vm,
 )
+from .guest_vsock import fetch_guest_journal, GuestVsockError
 
 _LINE_WIDTH = 80
 
@@ -122,6 +124,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Allow making host-level changes, such as changing FW TCB settings.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable debug logging: create steps.log and per-guest log directories "
+        "with qemu-boot.log, qemu-error.log, qemu-command.log, and guest-journal.log",
     )
     return parser.parse_args(argv)
 
@@ -361,6 +370,7 @@ def execute_test(
     ovmf_path: str | None = None,
     environment: dict[str, str | None] | None = None,
     allow_host_changes: bool = False,
+    debug: bool = False,
 ) -> TestResult:
     """Run a test, printing each step live as it executes."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -389,6 +399,8 @@ def execute_test(
         artifact_dir.mkdir(parents=True, exist_ok=True)
         _flush(f"   Artifacts: {artifact_dir}")
 
+        step_logger = StepLogger(artifact_dir) if debug else None
+
         profile = None
         if test.requires_vm:
             profile = effective_vm_profile(
@@ -396,6 +408,7 @@ def execute_test(
                 guest_path,
                 qemu_binary=qemu_binary,
                 ovmf_path=ovmf_path,
+                artifact_dir=artifact_dir,
             )
 
         mod = import_test_module(test)
@@ -449,6 +462,8 @@ def execute_test(
                     if launch is not None and launch.ok and environment is not None:
                         update_environment_with_guest_os(environment, launch.profile)
             elif step.kind == "vm_stop":
+                stopped_launch: VMLaunchResult | None = None
+                guest_journal_output: str | None = None
                 if launch is None:
                     sr = StepResult(
                         step=step,
@@ -457,8 +472,16 @@ def execute_test(
                         duration_ms=0,
                     )
                 else:
+                    # Fetch guest journald logs before stopping the VM
+                    try:
+                        journal_result = fetch_guest_journal(launch.profile)
+                        guest_journal_output = journal_result.stdout
+                    except GuestVsockError:
+                        # Guest may have already halted or vsock unavailable
+                        guest_journal_output = None
                     sr = run_vm_stop_step(step, launch)
                     if sr.result != "error":
+                        stopped_launch = launch
                         launch = None
             elif step.kind == "host":
                 sr = run_step(step, guest_path, artifact_dir)
@@ -502,6 +525,20 @@ def execute_test(
                     stderr=f"Unsupported step kind {step.kind!r}",
                 )
             step_results.append(sr)
+            # Log step details when debug is enabled
+            if step_logger is not None:
+                # For vm_stop, use the stopped_launch to get log paths and journal
+                active_launch = stopped_launch if step.kind == "vm_stop" and stopped_launch else launch
+                qemu_cmd = active_launch.command_line if active_launch is not None else None
+                guest_id = active_launch.guest_id if active_launch is not None else None
+                guest_error_log = active_launch.profile.guest_error_log if active_launch is not None else None
+                guest_boot_log = active_launch.profile.guest_boot_log if active_launch is not None else None
+                journal_for_log = guest_journal_output if step.kind == "vm_stop" else None
+                step_logger.log_step(
+                    step, sr, command=qemu_cmd, guest_id=guest_id,
+                    guest_error_log_path=guest_error_log, guest_boot_log_path=guest_boot_log,
+                    guest_journal=journal_for_log,
+                )
 
             _flush(_step_result_line(sr, is_last))
 
@@ -572,6 +609,7 @@ def execute_certification(
     ovmf_path: str | None = None,
     environment: dict[str, str | None] | None = None,
     allow_host_changes: bool = False,
+    debug: bool = False,
 ) -> CertificationResult:
     """Run all tests in a certification with live output."""
     started_at = datetime.now(timezone.utc).isoformat()
@@ -600,6 +638,7 @@ def execute_certification(
             ovmf_path=ovmf_path,
             environment=environment,
             allow_host_changes=allow_host_changes,
+            debug=debug,
         )
         test_results.append(tr)
         overall = _worse_result(overall, tr.result)
@@ -736,6 +775,7 @@ def main(argv: list[str] | None = None) -> int:
                 ovmf_path=ovmf_override,
                 environment=environment,
                 allow_host_changes=args.allow_host_changes,
+                debug=args.debug,
             )
             prereq_results.append(tr)
             _flush("")
@@ -772,6 +812,7 @@ def main(argv: list[str] | None = None) -> int:
             ovmf_path=ovmf_override,
             environment=environment,
             allow_host_changes=args.allow_host_changes,
+            debug=args.debug,
         )
         cert_results.append(cr)
         total_tests += len(cr.test_results)
