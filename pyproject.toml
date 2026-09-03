@@ -6,6 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "sev-verify"
 version = "0.1.0"
 requires-python = ">=3.11"
+dependencies = [
+    # Ephemeral P-384 key generation for ID blocks (sev_verify.cvm_props).
+    # snpguest signs the ID block but cannot generate the keys, so this is
+    # needed on the host running the harness.  Host images install the distro
+    # package (python3-cryptography) — see images/host-*/mkosi.conf.
+    "cryptography",
+]
 
 [project.scripts]
 sev-verify = "sev_verify.cli:main"

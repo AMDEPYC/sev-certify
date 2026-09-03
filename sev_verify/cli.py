@@ -422,6 +422,7 @@ def execute_test(
             # A callable step may replace ctx.profile (dataclasses.replace on a
             # frozen VMProfile yields a new object); assigning the stale local
             # back over it silently discarded that change for every later step.
+            # e.g. generate_id_block setting id_block/id_auth/policy.
             profile = ctx.profile
             ctx.launch = launch
 

@@ -18,61 +18,22 @@ Pulled files and analysis output for this test go under ``ctx.artifact_dir``
 """
 
 import subprocess
-from pathlib import Path
 
+# calculate_measurement is imported, not redefined: it is shared with the ID
+# block test via cvm_props, and the handler for the step below resolves by name
+# on this module, so the import is what makes it available.
+from sev_verify.cvm_props import (
+    MeasurementError,
+    calculate_measurement,
+    read_measurement,
+)
 from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
-from sev_verify.vm_profile import VMProfile, VMProfileError
+from sev_verify.vm_profile import VMProfile
 
 vm_profile = VMProfile(
     image_path="",
     memory_mb=4096,
 )
-
-def calculate_measurement(ctx: StepContext) -> StepHandlerResult:
-    """
-    Calculate expected measurement using ``snpguest generate measurement``.
-
-    Searches for an AMD SEV-compatible OVMF binary and runs snpguest to
-    produce a hex measurement of the guest image, stored in
-    ``ctx.expected_measurement`` for later attestation comparison.
-    """
-    measurement_file = ctx.artifact_dir / "guest_measurement.txt"
-    ovmf_path = None
-
-    try:
-        ovmf_path = Path(ctx.profile.resolved_ovmf_path())
-    except VMProfileError as e:
-        return StepHandlerResult(
-            exit_code=1,
-            stderr=str(e),
-        )
-
-    result = subprocess.run(
-        [
-            "snpguest", "generate", "measurement",
-            "--vcpu-type", "EPYC-v4",
-            "--ovmf", str(ovmf_path),
-            "--kernel", str(ctx.guest_path),
-            "--output-format", "hex",
-            "--measurement-file", str(measurement_file),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return StepHandlerResult(
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
-
-    expected_measurement = measurement_file.read_text().strip()
-    return StepHandlerResult(
-        exit_code=0,
-        stdout=f"Calculated expected measurement: {expected_measurement}",
-    )
-
 
 def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
     """
@@ -82,10 +43,13 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
     to values computed in earlier ``callable`` or ``host`` steps.
     """
     report_file = ctx.artifact_dir / "report.bin"
-    measurement_file = ctx.artifact_dir / "guest_measurement.txt"
     request_file = ctx.artifact_dir / "request.bin"
 
-    expected_measurement = measurement_file.read_text().strip()
+    try:
+        expected_measurement = f"0x{read_measurement(ctx.artifact_dir)}"
+    except MeasurementError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
+
     request_data = "0x" + str(request_file.read_bytes().hex())
     result = subprocess.run(
         [
