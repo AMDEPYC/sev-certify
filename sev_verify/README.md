@@ -6,6 +6,9 @@ sev-verify uses a non-secure vsock channel between the host and the guest, which
 > [!WARNING]
 > This harness modifies host firmware/platform settings and is not intended for hosts running production workloads. It is meant for test and development servers, where its purpose is to validate operating systems. For safe platform readiness checks, use [snphost](https://github.com/virtee/snphost) instead.
 
+- [How to create a new test](../docs/how-to-create-new-tests.md)
+- [sev_verify reference](../docs/sev-verify.md) (manifest, step kinds, `VMProfile`)
+
 ## Usage
 
 ```bash
