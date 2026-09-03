@@ -12,7 +12,6 @@ Negative path: attempt three launches that must fail:
 
 from __future__ import annotations
 
-import os
 import subprocess
 import tempfile
 from dataclasses import replace
@@ -27,13 +26,11 @@ from cryptography.hazmat.primitives.serialization import (
 
 from sev_verify import attestation_report
 from sev_verify.cvm_props import (
-    DEFAULT_FAMILY_ID,
-    DEFAULT_GUEST_SVN,
-    DEFAULT_IMAGE_ID,
-    DEFAULT_POLICY,
+    IdBlockMetadataError,
     MeasurementError,
     calculate_measurement,
     generate_id_block,
+    read_id_block_metadata,
     read_measurement,
 )
 from sev_verify.models import BaseStep, Step, StepContext, StepHandlerResult
@@ -67,26 +64,29 @@ def verify_id_block_fields(ctx: StepContext) -> StepHandlerResult:
     except attestation_report.ReportError as exc:
         return StepHandlerResult(exit_code=1, stderr=str(exc))
 
-    family_id = os.environ.get("ID_BLOCK_FAMILY_ID", DEFAULT_FAMILY_ID)
-    image_id = os.environ.get("ID_BLOCK_IMAGE_ID", DEFAULT_IMAGE_ID)
-    guest_svn = int(os.environ.get("ID_BLOCK_GUEST_SVN", DEFAULT_GUEST_SVN))
-    policy_int = int(os.environ.get("ID_BLOCK_POLICY", DEFAULT_POLICY), 0)
-
-    expected_family = family_id.encode("ascii").ljust(16, b"\x00")
-    expected_image = image_id.encode("ascii").ljust(16, b"\x00")
+    # Read through the same helper the generator used, so the expectations here
+    # cannot drift from the values the ID block was actually built with.
+    try:
+        meta = read_id_block_metadata()
+    except IdBlockMetadataError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
 
     errors = []
-    if report.guest_svn != guest_svn:
-        errors.append(f"guest_svn: expected {guest_svn}, got {report.guest_svn}")
-    if report.policy != policy_int:
-        errors.append(f"policy: expected {hex(policy_int)}, got {hex(report.policy)}")
-    if report.family_id != expected_family:
+    if report.guest_svn != meta.guest_svn:
+        errors.append(f"guest_svn: expected {meta.guest_svn}, got {report.guest_svn}")
+    if report.policy != meta.policy:
         errors.append(
-            f"family_id: expected {expected_family.hex()}, got {report.family_id.hex()}"
+            f"policy: expected {hex(meta.policy)}, got {hex(report.policy)}"
         )
-    if report.image_id != expected_image:
+    if report.family_id != meta.family_id_bytes:
         errors.append(
-            f"image_id: expected {expected_image.hex()}, got {report.image_id.hex()}"
+            f"family_id: expected {meta.family_id_bytes.hex()}, "
+            f"got {report.family_id.hex()}"
+        )
+    if report.image_id != meta.image_id_bytes:
+        errors.append(
+            f"image_id: expected {meta.image_id_bytes.hex()}, "
+            f"got {report.image_id.hex()}"
         )
     # An all-zero ID_KEY_DIGEST means the guest launched without an ID block at
     # all. The four comparisons above would then all fail with zeros, which is
@@ -101,8 +101,9 @@ def verify_id_block_fields(ctx: StepContext) -> StepHandlerResult:
     return StepHandlerResult(
         exit_code=0,
         stdout=(
-            f"All ID block fields match: svn={guest_svn} policy={hex(policy_int)} "
-            f"family_id={family_id!r} image_id={image_id!r}\n"
+            f"All ID block fields match: svn={meta.guest_svn} "
+            f"policy={hex(meta.policy)} family_id={meta.family_id!r} "
+            f"image_id={meta.image_id!r}\n"
             f"  report v{report.version} vmpl={report.vmpl} "
             f"cpuid={report.cpuid} gen={report.generation} "
             f"tcb=({report.reported_tcb})\n"
@@ -115,16 +116,20 @@ def verify_id_block_fields(ctx: StepContext) -> StepHandlerResult:
 
 
 def _regenerate_id_block(
-    ctx: StepContext, measurement: str, policy: str,
+    ctx: StepContext, measurement: str, policy: int,
 ) -> StepHandlerResult:
     """Generate a fresh ID block with the given measurement and policy, update ctx.profile.
 
     ``measurement`` must be in snpguest's input form — 0x-prefixed hex.  An
     unprefixed string is decoded as base64, not hex.
+
+    Only the policy varies between the negative cases; the identifying fields
+    come from the same validated source the original ID block was built from.
     """
-    family_id = os.environ.get("ID_BLOCK_FAMILY_ID", DEFAULT_FAMILY_ID)
-    image_id = os.environ.get("ID_BLOCK_IMAGE_ID", DEFAULT_IMAGE_ID)
-    guest_svn = os.environ.get("ID_BLOCK_GUEST_SVN", DEFAULT_GUEST_SVN)
+    try:
+        meta = read_id_block_metadata()
+    except IdBlockMetadataError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
 
     id_key = ec.generate_private_key(ec.SECP384R1())
     auth_key = ec.generate_private_key(ec.SECP384R1())
@@ -147,10 +152,10 @@ def _regenerate_id_block(
                 "snpguest", "generate", "id-block",
                 str(id_key_path), str(auth_key_path),
                 measurement,
-                "--family-id", family_id,
-                "--image-id", image_id,
-                "--svn", guest_svn,
-                "--policy", policy,
+                "--family-id", meta.family_id,
+                "--image-id", meta.image_id,
+                "--svn", str(meta.guest_svn),
+                "--policy", hex(policy),
                 "--id-file", str(id_block_file),
                 "--auth-file", str(id_auth_file),
             ],
@@ -179,12 +184,16 @@ def set_bad_measurement(ctx: StepContext) -> StepHandlerResult:
     except MeasurementError as exc:
         return StepHandlerResult(exit_code=1, stderr=str(exc))
 
+    try:
+        meta = read_id_block_metadata()
+    except IdBlockMetadataError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
+
     # Flip the first byte of the digest
     flipped_byte = "00" if real[:2].lower() != "00" else "ff"
     flipped = flipped_byte + real[2:]
 
-    policy = os.environ.get("ID_BLOCK_POLICY", DEFAULT_POLICY)
-    hr = _regenerate_id_block(ctx, f"0x{flipped}", policy)
+    hr = _regenerate_id_block(ctx, f"0x{flipped}", meta.policy)
     if hr.exit_code != 0:
         return hr
     return StepHandlerResult(
@@ -275,17 +284,20 @@ def set_incompatible_policy(ctx: StepContext) -> StepHandlerResult:
     except MeasurementError as exc:
         return StepHandlerResult(exit_code=1, stderr=str(exc))
 
-    policy = os.environ.get("ID_BLOCK_POLICY", DEFAULT_POLICY)
-    policy_int = int(policy, 0)
+    try:
+        meta = read_id_block_metadata()
+    except IdBlockMetadataError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
+
     # Clear SMT bit (16) — guest demands no SMT, but host has SMT active
-    incompatible_policy = hex(policy_int & ~(1 << 16))
+    incompatible_policy = meta.policy & ~(1 << 16)
 
     hr = _regenerate_id_block(ctx, f"0x{measurement}", incompatible_policy)
     if hr.exit_code != 0:
         return hr
     return StepHandlerResult(
         exit_code=0,
-        stdout=f"Set incompatible policy {incompatible_policy} (SMT=0, host SMT active)",
+        stdout=f"Set incompatible policy {hex(incompatible_policy)} (SMT=0, host SMT active)",
     )
 
 
@@ -301,18 +313,20 @@ def set_bad_abi_version(ctx: StepContext) -> StepHandlerResult:
     except MeasurementError as exc:
         return StepHandlerResult(exit_code=1, stderr=str(exc))
 
-    policy = os.environ.get("ID_BLOCK_POLICY", DEFAULT_POLICY)
-    policy_int = int(policy, 0)
-    # Set ABI_MAJOR (bits 15:8) to 255
-    bad_policy = (policy_int & ~0xFF00) | (0xFF << 8)
-    bad_policy_hex = hex(bad_policy)
+    try:
+        meta = read_id_block_metadata()
+    except IdBlockMetadataError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
 
-    hr = _regenerate_id_block(ctx, f"0x{measurement}", bad_policy_hex)
+    # Set ABI_MAJOR (bits 15:8) to 255
+    bad_policy = (meta.policy & ~0xFF00) | (0xFF << 8)
+
+    hr = _regenerate_id_block(ctx, f"0x{measurement}", bad_policy)
     if hr.exit_code != 0:
         return hr
     return StepHandlerResult(
         exit_code=0,
-        stdout=f"Set policy {bad_policy_hex} (ABI_MAJOR=255)",
+        stdout=f"Set policy {hex(bad_policy)} (ABI_MAJOR=255)",
     )
 
 

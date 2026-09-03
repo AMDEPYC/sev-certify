@@ -20,13 +20,13 @@ is typed "setup" — the remaining steps are skipped cleanly.
 
 from __future__ import annotations
 
+import os
 import string
 import subprocess
 import tempfile
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-# may need to change this library
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
@@ -35,7 +35,8 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from .models import StepContext, StepHandlerResult
-from .vm_profile import VMProfile, VMProfileError
+# from .vm_profile import VMProfile, VMProfileError
+from .vm_profile import VMProfileError
 
 _MEASUREMENT_FILE = "guest_measurement.txt"
 _ID_BLOCK_FILE = "id-block.b64"
@@ -49,6 +50,94 @@ DEFAULT_POLICY = "0xb0000"
 # The SNP attestation report MEASUREMENT field is 48 bytes, so the hex form is
 # 96 characters.  Fixed by the SNP spec, not by configuration.
 MEASUREMENT_HEX_LEN = 96
+
+# FAMILY_ID and IMAGE_ID are 16-byte fields in both the ID block and the
+# attestation report.  Fixed by the SNP spec, not by configuration.
+ID_FIELD_SIZE = 16
+
+
+class IdBlockMetadataError(Exception):
+    """An ID_BLOCK_* environment variable holds a value that cannot be used."""
+
+
+@dataclass(frozen=True)
+class IdBlockMetadata:
+    """The ID block's identifying fields, validated and in usable form.
+
+    Read once and shared between the step that builds an ID block and the step
+    that checks the resulting report, so the two cannot disagree about what was
+    asked for.  Deriving expectations separately from the environment would let
+    the check pass against values the ID block was never built with.
+    """
+
+    family_id: str
+    image_id: str
+    guest_svn: int
+    policy: int
+
+    @property
+    def family_id_bytes(self) -> bytes:
+        """FAMILY_ID as it appears in the report: ASCII, NUL-padded to 16 bytes."""
+        return self.family_id.encode("ascii").ljust(ID_FIELD_SIZE, b"\x00")
+
+    @property
+    def image_id_bytes(self) -> bytes:
+        """IMAGE_ID as it appears in the report: ASCII, NUL-padded to 16 bytes."""
+        return self.image_id.encode("ascii").ljust(ID_FIELD_SIZE, b"\x00")
+
+
+def _read_id_field(var: str, default: str) -> str:
+    """Read a 16-byte ID field, rejecting values that cannot encode into one.
+
+    ``ljust`` pads but never truncates, so an over-long value would otherwise
+    produce an expectation longer than the report field and fail to match every
+    time, with a byte-diff that does not say why.
+    """
+    value = os.environ.get(var, default)
+    try:
+        encoded = value.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise IdBlockMetadataError(
+            f"{var}: must be ASCII; {value!r} is not ({exc})"
+        ) from exc
+    if len(encoded) > ID_FIELD_SIZE:
+        raise IdBlockMetadataError(
+            f"{var}: must be at most {ID_FIELD_SIZE} bytes to fit the SNP field; "
+            f"{value!r} is {len(encoded)}"
+        )
+    return value
+
+
+def _read_int(var: str, default: str, *, base: int) -> int:
+    """Read an integer-valued variable, failing with the variable's name."""
+    raw = os.environ.get(var, default)
+    try:
+        parsed = int(raw, base)
+    except (TypeError, ValueError) as exc:
+        raise IdBlockMetadataError(
+            f"{var}: expected an integer, got {raw!r}"
+        ) from exc
+    if parsed < 0:
+        raise IdBlockMetadataError(f"{var}: must not be negative, got {parsed}")
+    return parsed
+
+
+def read_id_block_metadata() -> IdBlockMetadata:
+    """Read and validate the ID_BLOCK_* environment variables.
+
+    Raises:
+        IdBlockMetadataError: a variable is set to something unusable. Raised
+            rather than allowed to surface as a ValueError or UnicodeEncodeError
+            from deep in a handler, so the step fails with a message naming the
+            variable at fault.
+    """
+    return IdBlockMetadata(
+        family_id=_read_id_field("ID_BLOCK_FAMILY_ID", DEFAULT_FAMILY_ID),
+        image_id=_read_id_field("ID_BLOCK_IMAGE_ID", DEFAULT_IMAGE_ID),
+        guest_svn=_read_int("ID_BLOCK_GUEST_SVN", DEFAULT_GUEST_SVN, base=10),
+        # base=0 so 0x-prefixed, decimal and octal forms are all accepted.
+        policy=_read_int("ID_BLOCK_POLICY", DEFAULT_POLICY, base=0),
+    )
 
 
 class MeasurementError(Exception):
@@ -157,7 +246,10 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
     A file that is present but malformed is a different case and fails the
     step: absence is an expected configuration, corruption is not.
     """
-    import os
+    try:
+        meta = read_id_block_metadata()
+    except IdBlockMetadataError as exc:
+        return StepHandlerResult(exit_code=1, stderr=str(exc))
 
     try:
         measurement = read_measurement(ctx.artifact_dir)
@@ -168,11 +260,6 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
         )
     except MeasurementMalformed as exc:
         return StepHandlerResult(exit_code=1, stderr=str(exc))
-
-    family_id = os.environ.get("ID_BLOCK_FAMILY_ID", DEFAULT_FAMILY_ID)
-    image_id = os.environ.get("ID_BLOCK_IMAGE_ID", DEFAULT_IMAGE_ID)
-    guest_svn = os.environ.get("ID_BLOCK_GUEST_SVN", DEFAULT_GUEST_SVN)
-    policy = os.environ.get("ID_BLOCK_POLICY", DEFAULT_POLICY)
 
     id_key = ec.generate_private_key(ec.SECP384R1())
     auth_key = ec.generate_private_key(ec.SECP384R1())
@@ -196,10 +283,10 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
                 str(id_key_path),
                 str(auth_key_path),
                 f"0x{measurement}",
-                "--family-id", family_id,
-                "--image-id", image_id,
-                "--svn", guest_svn,
-                "--policy", policy,
+                "--family-id", meta.family_id,
+                "--image-id", meta.image_id,
+                "--svn", str(meta.guest_svn),
+                "--policy", hex(meta.policy),
                 "--id-file", str(id_block_file),
                 "--auth-file", str(id_auth_file),
             ],
@@ -218,12 +305,15 @@ def generate_id_block(ctx: StepContext) -> StepHandlerResult:
     id_block_b64 = id_block_file.read_text().strip()
     id_auth_b64 = id_auth_file.read_text().strip()
 
-    ctx.profile = replace(ctx.profile, id_block=id_block_b64, id_auth=id_auth_b64, policy=policy)
+    ctx.profile = replace(
+        ctx.profile, id_block=id_block_b64, id_auth=id_auth_b64, policy=meta.policy
+    )
 
     return StepHandlerResult(
         exit_code=0,
         stdout=(
             f"Generated ID block for measurement {measurement[:16]}...\n"
-            f"  family_id={family_id} image_id={image_id} svn={guest_svn} policy={policy}"
+            f"  family_id={meta.family_id} image_id={meta.image_id} "
+            f"svn={meta.guest_svn} policy={hex(meta.policy)}"
         ),
     )
