@@ -32,7 +32,12 @@ python3 -m sev_verify /path/to/guest.efi --output-dir /data/sev-artifacts -v 3.0
 
 ## How it works
 
-1. Discover manifests at `cert_tests/*/manifest.toml`. Each manifest declares test entries (name, scope, module path).
+1. Discover manifests at `cert_tests/*/manifest.toml`. Each manifest declares test entries:
+
+   - **`name`**, **`description`**, **`module`** — identity and the dotted path to the test module.
+   - **`scope`** — `host`, `guest`, or `mixed`. Anything other than `host` causes a `VMProfile` to be built (see step 4).
+   - **`level`** — certification level, e.g. `3.0.0-1`. Several tests may share one level. Also selects the artifacts directory (see [Artifacts directory](#artifacts-directory)).
+   - **`host_changes`** — set `true` when the test may alter host state that outlives it, such as `snphost commit` advancing the committed TCB floor. Such tests are listed at startup and gated on `--allow-host-changes`. Launching a guest does not count; changing platform configuration does.
 
 2. For each test, import its Python module and call `steps()` to get the ordered list of **`BaseStep`** records. Each has a **`kind`** field (`host`, `guest`, `vm_launch`, …). Define steps with **`Step`** either **chained** (``Step(...).host(command=...)``, …) or **in one call** with ``Step.for_host(...)``, ``Step.for_callable(...)``, etc., so your editor shows every required parameter for that shape. Only the fields relevant to ``kind`` may be set; invalid combinations are rejected at construction.
 
@@ -69,6 +74,11 @@ sev_verify/              Harness package
   runner.py              load_test_execution_plan, run_step, run_vm_launch_step, …
   vm_profile.py          VMProfile, QEMU argv, vm_launch / stop_vm
   guest_vsock.py         vsock command channel to the guest
+  attestation_report.py  Parse report.bin; TCB layout varies by CPU generation
+  cvm_props.py           Measurement + ID block generation shared across tests
+  environment.py         Host component versions recorded in the result
+  os_info.py             Host and guest OS identity (guest read over vsock)
+  output.py              JSON and Markdown result writers
   cert_tests/            Certification levels
     common/              Shared test modules
       snp_ok.py      Example host-only test
@@ -84,14 +94,13 @@ results/                 Output (gitignored)
 Python 3.11+ (uses `tomllib` from stdlib).
 
 One external package: **`cryptography`**, used by the ID block tests to generate
-ephemeral P-384 key pairs. `snpguest` signs the ID block and computes key
-digests but cannot generate keys, so this step cannot be delegated to the
-tooling.
+the ephemeral P-384 key pairs that sign an ID block. `snpguest` signs and
+computes key digests but cannot generate keys, so this cannot be delegated to
+the tooling.
 
-Install it from the distribution rather than with pip. The harness runs from the
-source tree as `python3 -m sev_verify`, which imports the package directly and
-never consults the dependency list in `pyproject.toml` — that list applies only
-if the project is installed (`pip install -e .`).
+Install it from the distribution, not with pip — the harness runs from the
+source tree, so `pyproject.toml`'s dependency list is never consulted unless the
+project is actually installed.
 
 ```
 apt install python3-cryptography        # Debian / Ubuntu
@@ -99,7 +108,7 @@ dnf install python3-cryptography        # Fedora / RHEL / CentOS / Rocky
 zypper install python3-cryptography     # openSUSE
 ```
 
-Host images install it through `Packages=` in `images/host-*/mkosi.conf`; a
+Host images install it through `Packages=` in `images/host-*/mkosi.conf`, so a
 freshly built image needs no extra step.
 
 ## Flags

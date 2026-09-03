@@ -52,6 +52,13 @@ matching what a v2 report — which carries no CPUID — already does.
 An unrecognised processor still raises when it is the *only* source, since
 guessing a layout would produce plausible-looking but wrong values with no error.
 
+Report *versions* are treated more leniently than processors, deliberately. A
+newer version is decoded with the newest validated offsets and the assumption
+recorded in ``version_note``; only versions older than the validated range are
+refused. The asymmetry is the point: misreading a generation corrupts values
+silently, whereas an unrecognised version at worst leaves new fields unread,
+and the version — unlike the generation — is stated in the report itself.
+
 Offsets are confirmed against real reports rather than read off a spec. The
 first such validation used a v3 report from an EPYC 9654 (Genoa, CPUID
 19h/11h), cross-checked against independently known values:
@@ -93,11 +100,13 @@ REPORT_SIZE = 1184
 #: Report versions whose layout we read. v3 and v5 are verified on hardware;
 #: v2 shares the same layout for every field below 0x188.
 #:
-#: Versions have only ever *appended* fields, so a newer report is very likely
-#: readable with these offsets unchanged. "Very likely" is not a basis for a
-#: certification result, so an unlisted version is refused rather than assumed
-#: compatible — the same stance :data:`SUPPORTED_GENERATIONS` takes, for the
-#: same reason.
+#: Membership here means *validated*, not *accepted*. A newer version is still
+#: decoded — with these offsets, and a note on the result recording the
+#: assumption — because versions have only ever appended fields, so the cost of
+#: being wrong is missing something new rather than misreading something old.
+#: Only versions *older* than this set are refused, where fields may genuinely
+#: not exist. See :func:`parse` for why that is a weaker stance than the one
+#: :data:`SUPPORTED_GENERATIONS` takes.
 #:
 #: Note this is an axis independent of processor generation. The version decides
 #: which fields exist and where; the generation decides how TCB_VERSION's eight
@@ -107,8 +116,9 @@ REPORT_SIZE = 1184
 #:
 #: v5 was added after a real v5 report from an EPYC 9575F decoded correctly at
 #: these offsets — REPORTED_TCB matched ``snphost show tcb`` and CPUID matched
-#: the host's, confirming its additions moved nothing we read. v4 exists and is
-#: still refused, never having been seen. To add one:
+#: the host's, confirming its additions moved nothing we read. v4 has never been
+#: seen; it decodes on the append-only assumption and says so. To promote a
+#: version to validated:
 #:
 #:   1. Check whether it shares framing with a version already listed. The
 #:      ``sev`` crate's ``ReportVariant`` mapping groups versions by layout —
@@ -267,6 +277,10 @@ class AttestationReport:
     #: preferred — for instance when firmware leaves those bytes zero. ``None``
     #: when the report's CPUID was absent by design (v2) or agreed with the host.
     cpuid_note: str | None = None
+    #: Set when the report declared a version newer than any validated here and
+    #: was decoded with the newest known field offsets. ``None`` when the
+    #: version was one this parser has been checked against.
+    version_note: str | None = None
 
     @property
     def id_block_used(self) -> bool:
@@ -353,10 +367,36 @@ def parse(
         )
 
     (version,) = struct.unpack_from("<I", data, _OFF_VERSION)
+    # An unknown version is treated far less severely than an unknown processor,
+    # because the two mistakes fail differently.
+    #
+    # Misidentifying the generation means misreading bytes that are present:
+    # TCB_VERSION decodes to plausible but wrong values with nothing in the data
+    # to reveal it. A newer report version is the opposite — fields have only
+    # ever been appended, so everything read here stays where it was, and the
+    # cost is missing what is new rather than misreading what is old. The
+    # version is also self-describing, sitting in the first four bytes and
+    # always present, which is exactly what the processor generation is not.
+    #
+    # So a newer report is decoded with the newest validated offsets and the
+    # assumption recorded. The ``sev`` crate does the same, mapping any
+    # unrecognised version onto its newest variant.
+    #
+    # An *older* version is still refused: below the validated range fields may
+    # genuinely not exist, rather than merely going unread.
+    version_note: str | None = None
     if version not in KNOWN_VERSIONS:
-        raise ReportUnsupportedVersion(
-            f"report declares VERSION {version}; this parser has been validated "
-            f"for {sorted(KNOWN_VERSIONS)}"
+        if version < min(KNOWN_VERSIONS):
+            raise ReportUnsupportedVersion(
+                f"report declares VERSION {version}, older than any layout "
+                f"validated here ({sorted(KNOWN_VERSIONS)}); fields read by "
+                f"this parser may not exist in that version"
+            )
+        version_note = (
+            f"report VERSION {version} is newer than any validated here "
+            f"({sorted(KNOWN_VERSIONS)}); decoded using version "
+            f"{max(KNOWN_VERSIONS)} field offsets, relying on the ABI's "
+            f"append-only convention"
         )
 
     (guest_svn,) = struct.unpack_from("<I", data, _OFF_GUEST_SVN)
@@ -454,6 +494,7 @@ def parse(
         cpuid=cpuid,
         generation=gen_name,
         cpuid_note=cpuid_note,
+        version_note=version_note,
     )
 
 
