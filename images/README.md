@@ -42,6 +42,18 @@ make clean                   # clean every image
 make status                  # show built images and their artifacts
 ```
 
+### Manifest generation (optional)
+
+By default, manifest and changelog files are **not** generated to reduce build time (~100 seconds). To enable them, set `GENERATE_MANIFEST` to `y`, `yes`, or `1` when running make:
+
+```bash
+make GENERATE_MANIFEST=yes all
+```
+
+The generated files (`.manifest`, `.changelog`, `.json`) provide a Software Bill of Materials (SBOM) for each image.
+
+To disable manifest generation, omit the variable (it defaults to empty).
+
 ## Naming
 
 ```

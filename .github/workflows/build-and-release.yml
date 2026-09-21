@@ -6,6 +6,11 @@ on:
         description: 'Replace existing development assets (if any)'
         required: false
         type: boolean
+      generate_os_package_manifest:
+        description: 'Generate OS package manifest and changelog files (adds ~100s to build time)'
+        required: false
+        type: boolean
+        default: false
   pull_request:
   push:  
     paths-ignore:
@@ -114,20 +119,63 @@ jobs:
         run: |
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build
-      
+          # MKOSI_ENV accumulates --environment flags; add new case blocks to extend
+          MKOSI_ENV=""
+          case "${{ github.event.inputs.generate_os_package_manifest }}" in
+            true) MKOSI_ENV="$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";;
+          esac
+          sudo mkosi --image-id=guest-${{ matrix.distro }}-${{ matrix.release }} -C images/guest-${{ matrix.distro }}-${{ matrix.release }}/ build $MKOSI_ENV
+
       - name: Build host-${{ matrix.distro }}-${{ matrix.release }}
         run: |
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ cat-config
           sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ summary
-          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build
-      
+          # MKOSI_ENV accumulates --environment flags; add new case blocks to extend
+          MKOSI_ENV=""
+          case "${{ github.event.inputs.generate_os_package_manifest }}" in
+            true) MKOSI_ENV="$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";;
+          esac
+          sudo mkosi --image-id=host-${{ matrix.distro }}-${{ matrix.release }} -C images/host-${{ matrix.distro }}-${{ matrix.release }}/ build $MKOSI_ENV
+
       - name: Stage artifacts for release (local copy)
         run: |        
           mkdir -p /tmp/release-artifacts
           cp images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/guest-${{ matrix.distro }}-${{ matrix.release }}.efi
           cp images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.efi /tmp/release-artifacts/host-${{ matrix.distro }}-${{ matrix.release }}.efi
-      
+
+      - name: Stage OS package manifests (if exists)
+        if: github.event.inputs.generate_os_package_manifest == 'true'
+        run: |
+          mkdir -p /tmp/${{ matrix.distro }}-${{ matrix.release }}-package-manifests
+          manifest_extensions=(manifest changelog)
+
+          for ext in "${manifest_extensions[@]}"; do
+            # Copy manifest files for guest image if they exist
+            guest_manifest_file="images/guest-${{ matrix.distro }}-${{ matrix.release }}/guest-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$guest_manifest_file" ]; then cp "$guest_manifest_file" /tmp/${{ matrix.distro }}-${{ matrix.release }}-package-manifests/; else echo "Artifact not found: $guest_manifest_file"; fi
+
+            # Copy manifest files for host image if they exist
+            host_manifest_file="images/host-${{ matrix.distro }}-${{ matrix.release }}/host-${{ matrix.distro }}-${{ matrix.release }}.$ext"
+            if [ -f "$host_manifest_file" ]; then cp "$host_manifest_file" /tmp/${{ matrix.distro }}-${{ matrix.release }}-package-manifests/; else echo "Artifact not found: $host_manifest_file"; fi
+          done
+
+      - name: Create and upload OS package manifest archives
+        if: github.event.inputs.generate_os_package_manifest == 'true' && github.event_name == 'workflow_dispatch'
+        run: |
+          zip -rj /tmp/${{ matrix.distro }}-${{ matrix.release }}-package-manifests.zip /tmp/${{ matrix.distro }}-${{ matrix.release }}-package-manifests/
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="devel"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+
+          gh release upload "${TAG}" \
+            /tmp/${{ matrix.distro }}-${{ matrix.release }}-package-manifests.zip \
+            --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload guest assets (default content type)
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
         run: |
@@ -178,3 +226,4 @@ jobs:
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

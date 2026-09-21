@@ -1,4 +1,5 @@
 IMAGES := $(sort $(notdir $(wildcard host-* guest-*)))
+GENERATE_MANIFEST ?=
 CLEAN_IMAGES := $(addprefix clean-,$(IMAGES))
 
 GH_AUTH := $(if $(GITHUB_TOKEN),-H "Authorization: Bearer $(GITHUB_TOKEN)")
@@ -41,8 +42,13 @@ status:
 		fi; \
 	done
 
+# MKOSI_ENV accumulates --environment flags; add new case blocks to extend
 $(IMAGES): | .tags
-	mkosi --image-id=$@ -C $@ --env-file=../.tags build
+	@MKOSI_ENV=""; \
+	case "$(GENERATE_MANIFEST)" in \
+		y|yes|1) MKOSI_ENV="$$MKOSI_ENV --environment=GENERATE_MANIFEST=yes";; \
+	esac; \
+	mkosi --image-id=$@ -C $@ --env-file=../.tags build $$MKOSI_ENV
 
 $(CLEAN_IMAGES):
 	mkosi --image-id=$(patsubst clean-%,%,$@) -C $(patsubst clean-%,%,$@) clean
