@@ -27,3 +27,10 @@ description = "Verify ID block acceptance, report field binding, and launch reje
 module = "cert_tests.c3_0.c3_0_0_1.id_block_test"
 scope = "mixed"
 level = "3.0.0-1"
+
+[[tests]]
+name = "key-derivation"
+description = "Launch SEV-SNP guest and run key derivation tests"
+module = "cert_tests.c3_0.c3_0_0_1.key_derivation_test"
+scope = "mixed"
+level = "3.0.0-1"
