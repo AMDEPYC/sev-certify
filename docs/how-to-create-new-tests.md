@@ -8,6 +8,7 @@ Step kinds, `VMProfile` fields, and current limits are in the [sev_verify refere
   - [Create the module](#create-the-module)
   - [Define steps](#define-steps)
   - [VM profile](#vm-profile)
+  - [ID block](#id-block)
   - [Manifest entry](#manifest-entry)
   - [Run the test](#run-the-test)
   - [Templates](#templates)
@@ -58,6 +59,41 @@ vm_profile = VMProfile(
 ```
 
 Field list and the function form are in [VM profile](sev-verify.md#vm-profile).
+
+## ID block
+
+If the guest should launch with an [ID block](features/id-block.md), put two shared callable steps ahead of `vm_launch`, in this order, and import both handlers. The harness looks a step's `handler` up by name in the test module, so the import is required even though nothing in the module calls it.
+
+```python
+from sev_verify.cvm_props import calculate_measurement, generate_id_block  # noqa: F401
+from sev_verify.models import BaseStep, Step
+
+
+def steps() -> list[BaseStep]:
+    return [
+        Step.for_callable(
+            name="Calculate measurement",
+            type="setup",
+            handler="calculate_measurement",
+            timeout=60,
+        ),
+        Step.for_callable(
+            name="Generate ID block",
+            type="setup",
+            handler="generate_id_block",
+            timeout=30,
+        ),
+        Step.for_vm_launch(
+            name="Launch guest",
+            type="setup",
+            guest_id="my-test-vm",
+            timeout=300,
+        ),
+        # ... guest steps ...
+    ]
+```
+
+`generate_id_block` updates the test's VM profile, so the launch that follows passes the ID block to QEMU. Its identifying fields come from the `ID_BLOCK_*` environment variables. If the measurement file is missing it skips silently and the guest launches *without* an ID block, so a test that depends on one should check the attestation report. How to do that, the variables, and the other pitfalls are in [SNP ID Block](features/id-block.md#how-to-use-an-id-block-in-a-test).
 
 ## Manifest entry
 
