@@ -351,9 +351,10 @@ Fields:
 - **vsock_command_timeout** — Default seconds for a guest command. Default: `300`.
 - **vsock_max_response_bytes** — Maximum vsock response size. Default: 16 MiB.
 - **host_data** — SEV-SNP `HOST_DATA` (exactly 32 bytes as hex or base64). Default: unset.
-- **policy** — SEV-SNP guest policy (int or hex string). Default: unset.
+- **policy** — SEV-SNP guest policy (int or hex string). Default: unset. The `generate_id_block` step sets it to the policy it puts in the ID block. See [SNP ID Block](features/id-block.md).
 - **auth_key_enabled** — Pass `author-key-enabled=true` to QEMU. Default: `False`.
 - **kernel_hashes** — Pass `kernel-hashes=on` to QEMU. Default: `True`.
+- **id_block**, **id_auth** — Base64 ID block and ID auth info, passed to QEMU as `id-block=` and `id-auth=`. Default: unset. Both are needed: if only one is set, neither is passed. Normally filled in by the `generate_id_block` step rather than set by hand; see [SNP ID Block](features/id-block.md).
 - **cbitpos** — C-bit position. Default: `51`.
 - **reduced_phys_bits** — Reduced physical bits. Default: `1`.
 
