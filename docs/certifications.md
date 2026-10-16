@@ -29,6 +29,14 @@ AMD EPYC 9004 (Genoa)
 -------------
 | OS |  Status |  3.0 Certification | 3.1 Certification |
 |---|---|---|---|
+| Centos 10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/319) |
+| Debian forky | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/322) |
+| Fedora 41 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/323) |
+| Fedora 44 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/324) |
+| Rocky 10.2 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/326) |
+| Ubuntu 25.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/327) |
+| Ubuntu 25.10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/328) |
+| Ubuntu 26.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/329) |
 
 AMD EPYC 8005 (Sorano)
 -------------
