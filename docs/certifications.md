@@ -34,6 +34,7 @@ AMD EPYC 9004 (Genoa)
 | Fedora 41 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/323) |
 | Fedora 44 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/324) |
 | Rocky 10.2 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/326) |
+| Ubuntu 25.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/327) |
 
 AMD EPYC 8005 (Sorano)
 -------------
