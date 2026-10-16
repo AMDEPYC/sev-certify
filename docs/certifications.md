@@ -32,6 +32,7 @@ AMD EPYC 9004 (Genoa)
 | Centos 10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/319) |
 | Debian forky | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/322) |
 | Fedora 41 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/323) |
+| Fedora 44 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/324) |
 
 AMD EPYC 8005 (Sorano)
 -------------
