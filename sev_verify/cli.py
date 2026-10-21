@@ -24,7 +24,7 @@ from .output import write_json, write_markdown
 from .runner import (
     effective_vm_profile,
     import_test_module,
-    load_test_execution_plan,
+    invoke_steps,
     run_callable_step,
     run_guest_pull_step,
     run_guest_step,
@@ -388,7 +388,10 @@ def execute_test(
 
     try:
         try:
-            steps, declared_profile = load_test_execution_plan(test)
+            mod = import_test_module(test)
+            declared_profile = getattr(mod, "vm_profile", None)
+            if callable(declared_profile):
+                declared_profile = declared_profile()
         except Exception as exc:
             _flush(f"   [ERR!] — failed to load module: {exc}")
             return TestResult(
@@ -412,7 +415,6 @@ def execute_test(
                 debug=debug,
             )
 
-        mod = import_test_module(test)
         ctx = StepContext(
             test=test,
             guest_path=guest_path,
@@ -425,6 +427,14 @@ def execute_test(
             cli_ovmf_path=ovmf_path,
             allow_host_changes=allow_host_changes,
         )
+        try:
+            steps = invoke_steps(mod, ctx)
+        except Exception as exc:
+            _flush(f"   [ERR!] — failed to build steps: {exc}")
+            return TestResult(
+                test=test, result="error", step_results=[],
+                started_at=started_at, completed_at=datetime.now(timezone.utc).isoformat(),
+            )
 
         overall = "pass"
         total_steps = len(steps)
@@ -483,12 +493,7 @@ def execute_test(
                 stopped_launch: VMLaunchResult | None = None
                 guest_journal_output: str | None = None
                 if launch is None:
-                    sr = StepResult(
-                        step=step,
-                        result="error",
-                        stderr="vm_stop: no running guest (run vm_launch or a guest step first)",
-                        duration_ms=0,
-                    )
+                    sr = run_vm_stop_step(step, None)
                 else:
                     # Fetch guest journald logs before stopping the VM (only in debug mode)
                     if debug:
