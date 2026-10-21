@@ -34,6 +34,8 @@ Each certificate generation has its own folder (`c3_0`, `c3_1`, `c4_0`, `c4_1`, 
 | c4_1 | 4.1 | AMD EPYC 9005 |
 | c5_0 | 5.0 | AMD EPYC 9006 |
 
+Run without `-v` and the harness reads the host CPU (`sev_verify/processor.py`) and runs every generation up to that processor. Turin runs 3.0 through 4.1. Sorano stops at 4.0. Genoa, Bergamo, and Siena stop at 3.1. Milan runs 3.0. An explicit `-v` still selects versions directly. The beacon host script calls the same module, so the label and the harness agree. Venice is not identified yet.
+
 Under each certificate folder there is a `manifest.toml` file and several subfolders that correspond to the certification levels for that processor generation.
 
 `manifest.toml` is the table of contents for the certificate generation. It lists the certification levels for that generation and which tests each level introduced.

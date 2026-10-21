@@ -23,7 +23,7 @@ python3 -m sev_verify /path/to/guest.efi --qemu-binary /opt/qemu/bin/qemu-system
 # Short form for QEMU:
 python3 -m sev_verify /path/to/guest.efi --qemu /opt/qemu/bin/qemu-system-x86_64
 
-# Run all certifications found in cert_tests/
+# Run the certifications that apply to this CPU
 python3 -m sev_verify /path/to/guest.efi
 
 # Put per-test artifacts somewhere other than ./artifacts
@@ -158,7 +158,7 @@ Invoke as `python3 -m sev_verify <path_to_guest> [flags]`. There are no subcomma
 | Argument / flag | Default | Description |
 | --- | --- | --- |
 | `path_to_guest` | *(required)* | Path to the guest image/UKI to test. |
-| `-v`, `--version` | all manifests | Version filter(s). Accepts `3.0` (all tests in cert 3.0), `3.0.0` (all `3.0.0-*` levels), or `3.0.0-0` (exact level). Comma-separated lists and repeated `-v` flags both work. If omitted, every `cert_tests/*/manifest.toml` runs. |
+| `-v`, `--version` | host processor | Version filter(s). Accepts `3.0` (all tests in cert 3.0), `3.0.0` (all `3.0.0-*` levels), or `3.0.0-0` (exact level). Comma-separated lists and repeated `-v` flags both work. If omitted, the host processor selects every certification up to its generation. |
 | `-o`, `--output-dir` | `results/` | Directory for JSON and Markdown result files. |
 | `--artifacts-dir DIR` | `./artifacts` | Base directory for per-test artifact folders (see [Artifacts directory](#artifacts-directory)). |
 | `--qemu-binary`, `--qemu PATH` | test `VMProfile`, then `qemu-system-x86_64` | Override the QEMU executable for every test that launches a VM. Path must exist. |

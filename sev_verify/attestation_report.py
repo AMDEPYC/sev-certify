@@ -141,6 +141,7 @@ _OFF_POLICY = 0x008
 _OFF_FAMILY_ID = 0x010
 _OFF_IMAGE_ID = 0x020
 _OFF_VMPL = 0x030
+_OFF_PLATFORM_INFO = 0x040
 _OFF_REPORT_DATA = 0x050
 _OFF_MEASUREMENT = 0x090
 _OFF_HOST_DATA = 0x0C0
@@ -253,6 +254,7 @@ class AttestationReport:
     family_id: bytes
     image_id: bytes
     vmpl: int
+    platform_info: int
     report_data: bytes
     measurement: bytes
     host_data: bytes
@@ -401,6 +403,7 @@ def parse(
     (guest_svn,) = struct.unpack_from("<I", data, _OFF_GUEST_SVN)
     (policy,) = struct.unpack_from("<Q", data, _OFF_POLICY)
     (vmpl,) = struct.unpack_from("<I", data, _OFF_VMPL)
+    (platform_info,) = struct.unpack_from("<Q", data, _OFF_PLATFORM_INFO)
 
     def field(off: int, length: int) -> bytes:
         return data[off:off + length]
@@ -486,6 +489,7 @@ def parse(
         family_id=field(_OFF_FAMILY_ID, _LEN_ID),
         image_id=field(_OFF_IMAGE_ID, _LEN_ID),
         vmpl=vmpl,
+        platform_info=platform_info,
         report_data=field(_OFF_REPORT_DATA, _LEN_REPORT_DATA),
         measurement=field(_OFF_MEASUREMENT, _LEN_MEASUREMENT),
         host_data=field(_OFF_HOST_DATA, _LEN_HOST_DATA),
