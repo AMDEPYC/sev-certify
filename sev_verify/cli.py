@@ -483,12 +483,7 @@ def execute_test(
                 stopped_launch: VMLaunchResult | None = None
                 guest_journal_output: str | None = None
                 if launch is None:
-                    sr = StepResult(
-                        step=step,
-                        result="error",
-                        stderr="vm_stop: no running guest (run vm_launch or a guest step first)",
-                        duration_ms=0,
-                    )
+                    sr = run_vm_stop_step(step, None)
                 else:
                     # Fetch guest journald logs before stopping the VM (only in debug mode)
                     if debug:
