@@ -90,6 +90,8 @@ A certification is a collection of tests. A test is a collection of steps.
 
 In your test module, define a `steps()` function that returns a list of `BaseStep` objects. Import `BaseStep` and `Step` from `sev_verify.models`.
 
+`steps()` may take a `StepContext`. The harness passes one when the function has a parameter, and calls `steps()` with no arguments otherwise. That context is from before any step has run: `allow_host_changes` is set, and `step_results` is empty. Use it to leave steps out of the list. A handler cannot decide that for you, because the list is already fixed by the time a handler runs.
+
 `Step.for_host(...)` builds a **host** step (`kind="host"`). Choose the factory that matches how the step should run: `Step.for_<kind>(...)`.
 
 There are six step kinds, each for a different role in a test.
