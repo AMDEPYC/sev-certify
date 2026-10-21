@@ -218,8 +218,21 @@ def run_vm_launch_step(
     )
 
 
-def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
-    """Terminate QEMU for ``launch`` (``stop_vm``; ``step.timeout`` is the wait/kill window)."""
+def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult | None) -> StepResult:
+    """Terminate QEMU for ``launch`` (``stop_vm``; ``step.timeout`` is the wait/kill window).
+
+    A missing guest is already stopped, so it passes the default ``exit_code:0``.
+    """
+    if launch is None:
+        msg = "No running guest"
+        passed = _check_expected_values(step, 0, msg)
+        return StepResult(
+            step=step,
+            result="pass" if passed else "fail",
+            exit_code=0 if passed else 1,
+            stdout=msg,
+            duration_ms=0,
+        )
     start = time.monotonic()
     try:
         stop_vm(launch, timeout=float(step.timeout))

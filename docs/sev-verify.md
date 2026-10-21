@@ -212,6 +212,7 @@ If the test still has a guest running at the end, the harness stops it in a `fin
 - The harness sends SIGTERM to QEMU and the process exits within **timeout** (default 10 seconds).
 - If SIGTERM is not enough, it sends SIGKILL and waits again for the same timeout.
 - The step stdout is `Guest VM stopped`.
+- If no guest is running, the step passes with stdout `No running guest`. A rejected launch leaves nothing to stop.
 
 **Failure** (`exit_code:1`, or an error):
 
