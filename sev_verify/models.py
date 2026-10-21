@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from types import ModuleType
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 
 # Certification / failure-handling semantics (unchanged field name: ``type``)
@@ -15,6 +15,20 @@ StepType = StepSeverity
 StepKind = Literal["vm_launch", "vm_stop", "host", "guest", "guest_pull", "callable"]
 
 Scope = Literal["host", "guest", "mixed"]
+
+
+def _validate_handler_args(name: str, args: dict[str, Any]) -> None:
+    """Reject handler arguments that cannot be passed as keywords after ``ctx``."""
+    if not isinstance(args, dict):
+        raise ValueError(
+            f"Step {name!r}: args must be a dict of keyword arguments, got {type(args).__name__}"
+        )
+    for key in args:
+        if not isinstance(key, str) or not key.isidentifier() or key == "ctx":
+            raise ValueError(
+                f"Step {name!r}: args key {key!r} is not a valid keyword "
+                f"(handler is called as handler(ctx, **args))"
+            )
 
 
 def _validate_expected_result_format(name: str, expected_result: str) -> None:
@@ -48,6 +62,9 @@ class BaseStep:
     timeout: int = 10
     command: str = ""
     handler: str = ""
+    # Keyword arguments passed to a callable handler after ``ctx``.
+    # Empty for every other step kind.
+    args: dict[str, Any] = field(default_factory=dict)
     guest_src: str = ""
     host_dest: str = ""
     # Guest identifier for vm_launch steps (used in debug log directory names).
@@ -142,6 +159,12 @@ class BaseStep:
                 raise ValueError(
                     f"Step {self.name!r}: callable steps must not set command, guest_src, host_dest, or guest_id"
                 )
+            _validate_handler_args(self.name, self.args)
+
+        if self.kind != "callable" and self.args:
+            raise ValueError(
+                f"Step {self.name!r}: only callable steps may set args"
+            )
 
         _validate_expected_result_format(self.name, self.expected_result)
 
@@ -200,8 +223,13 @@ class Step:
             **self._common(),
         )
 
-    def call(self, handler: str) -> BaseStep:
-        return BaseStep(kind="callable", handler=handler, **self._common())
+    def call(self, handler: str, args: dict[str, Any] | None = None) -> BaseStep:
+        return BaseStep(
+            kind="callable",
+            handler=handler,
+            args=dict(args or {}),
+            **self._common(),
+        )
 
     @classmethod
     def for_host(
@@ -280,12 +308,13 @@ class Step:
         type: StepSeverity,
         handler: str,
         *,
+        args: dict[str, Any] | None = None,
         expected_result: str = "exit_code:0",
         timeout: int = 10,
     ) -> BaseStep:
         return cls(
             name=name, type=type, expected_result=expected_result, timeout=timeout
-        ).call(handler)
+        ).call(handler, args)
 
 
 @dataclass
