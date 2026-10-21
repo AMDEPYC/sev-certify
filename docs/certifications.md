@@ -47,3 +47,4 @@ AMD EPYC 9005 (Turin)
 | 3.0.0-0 | SEV-SNP Attestation |
 | 3.0.0-1 | memfd numa, [key derivation](features/key-derivation.md), vlek loading, [snphost config & commit](features/tcb-config-commit.md) |
 | 3.1.1-0 | Memory Hotplug, Vector Mitigation, Cloud Hypervisor |
+| 4.1.0-0 | [Ciphertext hiding](features/ciphertext-hiding.md) |
