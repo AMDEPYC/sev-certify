@@ -308,7 +308,7 @@ def run_guest_pull_step(
 
 
 def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
-    """Run ``ctx.module.<step.handler>(ctx)`` with a wall-clock timeout (thread pool)."""
+    """Run ``ctx.module.<step.handler>(ctx, **step.args)`` with a wall-clock timeout."""
     start = time.monotonic()
     fn = getattr(ctx.module, step.handler, None)
     if fn is None:
@@ -330,7 +330,7 @@ def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
 
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(fn, ctx)
+            fut = pool.submit(fn, ctx, **step.args)
             try:
                 hr = fut.result(timeout=float(step.timeout))
             except FuturesTimeoutError:
