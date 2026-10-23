@@ -11,17 +11,17 @@ This table contains operating systems that have undergone certification testing 
 
 | OS | Status | [EPYC 7003][cert-3.0] | [EPYC 9004][cert-3.1] | [EPYC 8005][cert-4.0] | [EPYC 9005][cert-4.1] |
 |---|---|---|---|---|---|
-| CentOS 10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/278) |
+| CentOS 10 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/350) |
 | Debian 13 |  ❌ |  [N/A](https://github.com/AMDEPYC/sev-certify/issues/152) |
-| Debian Forky | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/228) |
-| Fedora 41 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/279) |
-| Fedora 44 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/299) |
-| Opensuse leap 16.0 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/309) |
+| Debian Forky | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/348) |
+| Fedora 41 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/353) |
+| Fedora 44 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/352) |
+| Opensuse leap 16.0 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/357) |
 | Rocky 10.1 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/230) |
-| Rocky 10.2 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/281) |
-| Ubuntu 25.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/274) |
-| Ubuntu 25.10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/276) |
-| Ubuntu 26.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/280) |
+| Rocky 10.2 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/355) |
+| Ubuntu 25.04 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/346) |
+| Ubuntu 25.10 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/347) |
+| Ubuntu 26.04 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/351) |
 
 ✅ Latest Level Certified
 ❌ Latest Level Not Certified
