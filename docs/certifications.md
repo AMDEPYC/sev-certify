@@ -12,23 +12,32 @@ AMD EPYC 7003 (Milan)
 -------------
 | OS |  Status |  3.0 Certification |
 |---|---|---|
-| CentOS 10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/278) |
+| CentOS 10 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/350) |
 | Debian 13 |  ❌ |  [N/A](https://github.com/AMDEPYC/sev-certify/issues/152) |
-| Debian Forky | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/228) |
-| Fedora 41 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/279) |
-| Fedora 44 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/299) |
-| Opensuse leap 16.0 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/309) |
+| Debian Forky | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/348) |
+| Fedora 41 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/353) |
+| Fedora 44 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/352) |
+| Opensuse leap 16.0 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/357) |
 | Rocky 10.0 |  ❌ |  N/A |
 | Rocky 10.1 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/230) |
-| Rocky 10.2 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/281) |
-| Ubuntu 25.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/274) |
-| Ubuntu 25.10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/276) |
-| Ubuntu 26.04 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/280) |
+| Rocky 10.2 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/355) |
+| Ubuntu 25.04 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/346) |
+| Ubuntu 25.10 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/347) |
+| Ubuntu 26.04 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/351) |
 
 AMD EPYC 9004 (Genoa)
 -------------
 | OS |  Status |  3.0 Certification | 3.1 Certification |
 |---|---|---|---|
+| Centos 10 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/331) |
+| Debian forky | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/333) |
+| Fedora 41 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/334) |
+| Fedora 44 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/324) |
+| Opensuse leap 16.0 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/336) |
+| Rocky 10.2 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/337) |
+| Ubuntu 25.04 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/338) |
+| Ubuntu 25.10 | ✅ | [c3.0.0-0](https://github.com/AMDEPYC/sev-certify/issues/328) |
+| Ubuntu 26.04 | ✅ | [c3.0.0-1](https://github.com/AMDEPYC/sev-certify/issues/340) |
 
 AMD EPYC 8005 (Sorano)
 -------------
