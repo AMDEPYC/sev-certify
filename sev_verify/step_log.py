@@ -97,6 +97,8 @@ class StepLogger:
             f.write(f"Command: {step.command}\n")
         elif step.kind == "callable":
             f.write(f"Handler: {step.handler}\n")
+            if step.args:
+                f.write(f"Args: {step.args!r}\n")
             if result.command:
                 f.write(f"Command: {result.command}\n")
         elif step.kind == "guest_pull":

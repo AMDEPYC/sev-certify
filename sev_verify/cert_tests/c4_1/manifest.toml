@@ -1,0 +1,13 @@
+version = "4.1"
+description = "SEV 4.1 Tests (AMD EPYC 9005+)"
+max_certification_level = "4.1.0-0"
+
+# ── Level 4.1.0-0 ───────────────────────────────────────────
+
+[[tests]]
+name = "ciphertext-hiding"
+description = "Test that we can enable and launch a guest with ciphertext hiding"
+module = "cert_tests.c4_1.c4_1_0_0.ciphertext_test"
+scope = "mixed"
+level = "4.1.0-0"
+host_changes = true

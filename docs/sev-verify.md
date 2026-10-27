@@ -90,6 +90,8 @@ A certification is a collection of tests. A test is a collection of steps.
 
 In your test module, define a `steps()` function that returns a list of `BaseStep` objects. Import `BaseStep` and `Step` from `sev_verify.models`.
 
+`steps()` may take a `StepContext`. The harness passes one when the function has a parameter, and calls `steps()` with no arguments otherwise. That context is from before any step has run: `allow_host_changes` is set, and `step_results` is empty. Use it to leave steps out of the list. A handler cannot decide that for you, because the list is already fixed by the time a handler runs.
+
 `Step.for_host(...)` builds a **host** step (`kind="host"`). Choose the factory that matches how the step should run: `Step.for_<kind>(...)`.
 
 There are six step kinds, each for a different role in a test.
@@ -212,6 +214,7 @@ If the test still has a guest running at the end, the harness stops it in a `fin
 - The harness sends SIGTERM to QEMU and the process exits within **timeout** (default 10 seconds).
 - If SIGTERM is not enough, it sends SIGKILL and waits again for the same timeout.
 - The step stdout is `Guest VM stopped`.
+- If no guest is running, the step passes with stdout `No running guest`. A rejected launch leaves nothing to stop.
 
 **Failure** (`exit_code:1`, or an error):
 
@@ -284,8 +287,9 @@ A callable step runs a Python function on the test module instead of a shell com
 Kind-specific parameters:
 
 - **handler** — Name of a function defined in the same test module.
+- **args** — Keyword arguments for that function, passed after `ctx`. Omit it when the handler only needs `ctx`.
 
-The function must take a `StepContext` (`ctx`) and return a `StepHandlerResult(exit_code=..., stdout=..., stderr=...)`. The same **expected_result** rules apply.
+The function is called as `handler(ctx, **args)`. It must return a `StepHandlerResult(exit_code=..., stdout=..., stderr=...)`. The same **expected_result** rules apply. `args` is fixed when `steps()` returns; a later step cannot fill it in.
 
 `StepContext` is the class the harness passes into every callable handler. It is the in-process equivalent of `$GUEST_PATH` and `$SEV_VERIFY_ARTIFACT_DIR` on host steps: read it instead of hard-coding paths or re-running earlier work.
 
@@ -320,12 +324,25 @@ def check_hello(ctx: StepContext) -> StepHandlerResult:
     return StepHandlerResult(exit_code=0, stdout=f"found {report}")
 
 
+def check_policy(ctx: StepContext, required_bit: int) -> StepHandlerResult:
+    if required_bit < 0:
+        return StepHandlerResult(exit_code=1, stderr=f"bad bit {required_bit}")
+    return StepHandlerResult(exit_code=0, stdout=f"checked bit {required_bit}")
+
+
 def steps() -> list[BaseStep]:
     return [
         Step.for_callable(
             name="Check hello",
             type="required",
             handler="check_hello",
+            timeout=30,
+        ),
+        Step.for_callable(
+            name="Check policy bit 24",
+            type="required",
+            handler="check_policy",
+            args={"required_bit": 24},
             timeout=30,
         ),
     ]
@@ -403,5 +420,4 @@ If `vm_profile` is omitted, the harness uses `VMProfile` defaults with the CLI g
 The harness still has some limitations. We are working on them so tests can cover more cases and so writing tests stays simple. Known limitations:
 
 - **One `VMProfile` and one running VM per test.** Some tests need two or more guests, with the same profile or different ones. Today a test module can declare only one `vm_profile`. You can `vm_stop` and `vm_launch` again, but that reuses the same profile. Two guests cannot run at the same time.
-- **Callable handlers do not take extra parameters.** The harness calls `handler(ctx)` with a `StepContext` only. There is no way to pass extra arguments into the function, which limits how flexible this step kind is.
 - **Shared helpers are added as tests need them.** When the same logic shows up in more than one test, put it in a module under `sev_verify/cert_tests/common` and import it. There is no separate library release for this.
