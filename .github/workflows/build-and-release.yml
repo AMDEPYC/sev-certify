@@ -27,9 +27,42 @@ permissions:
   actions: read    # Required for workflow access
 
 jobs:
+  # Resolve component versions once: pinned in versions.env, else upstream latest
+  resolve-tags:
+    name: resolve component tags
+    runs-on: ubuntu-latest
+    outputs:
+      snphost: ${{ steps.resolve.outputs.snphost }}
+      snpguest: ${{ steps.resolve.outputs.snpguest }}
+      beacon: ${{ steps.resolve.outputs.beacon }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tags (pin from versions.env, fallback to latest)
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          . versions.env
+          resolve() {  # $1=repo $2=pinned tag
+            if [ -n "$2" ]; then
+              echo "$2"
+            else
+              gh release view --repo "$1" --json tagName --jq '.tagName'
+            fi
+          }
+          {
+            echo "snphost=$(resolve virtee/snphost   "${SNPHOST_TAG:-}")"
+            echo "snpguest=$(resolve virtee/snpguest "${SNPGUEST_TAG:-}")"
+            echo "beacon=$(resolve AMDEPYC/beacon    "${BEACON_TAG:-}")"
+          } >> "$GITHUB_OUTPUT"
+
   # Development release for tag or main pushes
   create-release:
     name: create new release for tagged or latest assets
+    needs: resolve-tags
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
     steps:
@@ -63,6 +96,7 @@ jobs:
 
   build:
     name: ${{ matrix.distro }}-${{ matrix.release }}
+    needs: resolve-tags
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -99,17 +133,15 @@ jobs:
           sudo apt update
           sudo apt install -y mkosi
 
-      - name: Fetch latest release tags
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply resolved release tags
         run: |
           set -euo pipefail
-          
-          # Fetch latest tags using gh CLI (automatically authenticated)
-          SNPGUEST_TAG=$(gh release view --repo virtee/snpguest --json tagName --jq '.tagName')
-          BEACON_TAG=$(gh release view --repo AMDEPYC/beacon --json tagName --jq '.tagName')
-          SNPHOST_TAG=$(gh release view --repo virtee/snphost --json tagName --jq '.tagName')
-          
+
+          # Tags resolved once by the resolve-tags job (pinned in versions.env, else upstream latest)
+          SNPGUEST_TAG="${{ needs.resolve-tags.outputs.snpguest }}"
+          BEACON_TAG="${{ needs.resolve-tags.outputs.beacon }}"
+          SNPHOST_TAG="${{ needs.resolve-tags.outputs.snphost }}"
+
           # Inject environment variables into mkosi.conf files
           sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/build/common/snpguest/mkosi.conf
           sed -i "/^\[Build\]/a\Environment=BEACON_TAG=$BEACON_TAG" modules/build/host/beacon/mkosi.conf

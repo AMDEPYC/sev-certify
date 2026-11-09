@@ -53,6 +53,8 @@ You can create and publish new host or guest images in `sev-certify` with `mkosi
 
     Then, verify for successful execution with the built new host and guest OS images under `devel` tag.
 
+    The `build-and-release` workflow resolves the `snphost`, `snpguest` and `beacon` release tags in its `resolve-tags` job before building. Versions are pinned in [`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) at the repository root (an empty entry falls back to the upstream latest release). The resolved repository/version pairs are shown as a table in the `resolve-tags` job summary.
+
     If the `build-and-release` workflow fails, you need to troubleshoot for the error in the workflow log, implement changes, and retest until successful execution.
 
 - **<ins>Test the new OS Host/Guest Images:</ins>** 
@@ -182,6 +184,8 @@ make GENERATE_MANIFEST=yes guest-<distro>-<release>
 ```
 
 The `GENERATE_MANIFEST` variable defaults to empty in the Makefile. When set to a truthy value (`y`, `yes`, or `1`), mkosi is invoked with the environment variable to generate manifest files.
+
+The `make tags` target resolves the `snphost`, `snpguest` and `beacon` versions from [`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env); pinned entries are used as-is and empty entries fall back to fetching the upstream latest release.
 
 **For local builds using mkosi directly**, pass the environment variable:
 
