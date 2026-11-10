@@ -41,6 +41,8 @@ Each certification run automatically creates a GitHub Issue containing the resul
 
 Host and Guest images are constructed in GitHub Workflows via [`mkosi`](https://github.com/systemd/mkosi). Host images are designed to be booted on a SEV-enabled EPYC server, and are configured with a series of tests in the form of custom systemd services that will run on an embedded guest image. The resulting host and guest images are available in GitHub releases.
 
+The upstream release versions of the components baked into the images — [`snphost`](https://github.com/virtee/snphost), [`snpguest`](https://github.com/virtee/snpguest), and [`beacon`](https://github.com/AMDEPYC/beacon) — are pinned in [`versions.env`](./versions.env) at the repository root. Bumps are made deliberately via a pull request so that any breakage in a new upstream release is caught at review time; the `build-and-release` workflow resolves the pinned tags (falling back to the upstream latest for any empty entry) and reports the resolved `repository → version` pairs in the `resolve-tags` job summary. Leave a value empty in `versions.env` to track the upstream latest release at build time.
+
 [cert-3.0]: ./docs/certifications.md#amd-epyc-7003-milan
 [cert-3.1]: ./docs/certifications.md#amd-epyc-9004-genoa
 [cert-4.0]: ./docs/certifications.md#amd-epyc-7004-bergamo
