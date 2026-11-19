@@ -106,9 +106,9 @@ jobs:
           set -euo pipefail
           
           # Fetch latest tags using gh CLI (automatically authenticated)
-          SNPGUEST_TAG=$(gh release view --repo virtee/snpguest --json tagName --jq '.tagName')
+          SNPGUEST_TAG=v0.10.0
           BEACON_TAG=$(gh release view --repo AMDEPYC/beacon --json tagName --jq '.tagName')
-          SNPHOST_TAG=$(gh release view --repo virtee/snphost --json tagName --jq '.tagName')
+          SNPHOST_TAG=v0.7.0
           
           # Inject environment variables into mkosi.conf files
           sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/build/common/snpguest/mkosi.conf
