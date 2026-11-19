@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 from types import ModuleType
 from pathlib import Path
-from typing import Literal, get_args
+from typing import TYPE_CHECKING, Literal, get_args
+
+if TYPE_CHECKING:
+    from .kds import KdsCache
 
 
 # Certification / failure-handling semantics (unchanged field name: ``type``)
@@ -391,6 +395,7 @@ class StepContext:
     step_results: list[StepResult]
     module: ModuleType
     artifact_dir: Path
+    artifacts_root: Path
     # Set by the harness when a VM is in use (types: VMProfile, VMLaunchResult — see vm_profile).
     profile: object | None = None
     launch: object | None = None
@@ -401,6 +406,13 @@ class StepContext:
     # such as changing firmware TCB settings (e.g. committing firmware TCB
     # levels). These are boot-session-only and reset on the next reboot.
     allow_host_changes: bool = False
+
+    @functools.cached_property
+    def kds(self) -> "KdsCache":
+        """KDS fetcher writing its cache under ``artifacts_root``."""
+        from .kds import KdsCache
+
+        return KdsCache(cache_dir=self.artifacts_root / "kds_cache")
 
 
 @dataclass

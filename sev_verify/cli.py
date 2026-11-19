@@ -419,6 +419,7 @@ def execute_test(
             step_results=step_results,
             module=mod,
             artifact_dir=artifact_dir,
+            artifacts_root=artifacts_root,
             profile=profile,
             launch=None,
             cli_qemu_binary=qemu_binary,

@@ -78,6 +78,19 @@ def verify_report_fields(ctx: StepContext) -> StepHandlerResult:
     )
 
 
+# TODO: call inline when params passing is merged
+def fetch_ca_cached(ctx: StepContext) -> StepHandlerResult:
+    report = ctx.artifact_dir / "report.bin"
+    ok, msg = ctx.kds.fetch_ca(report, ctx.artifact_dir)
+    return StepHandlerResult(exit_code=0 if ok else 1, stdout=msg if ok else "", stderr="" if ok else msg)
+
+
+def fetch_vcek_cached(ctx: StepContext) -> StepHandlerResult:
+    report = ctx.artifact_dir / "report.bin"
+    ok, msg = ctx.kds.fetch_vcek(report, ctx.artifact_dir)
+    return StepHandlerResult(exit_code=0 if ok else 1, stdout=msg if ok else "", stderr="" if ok else msg)
+
+
 def steps() -> list[BaseStep]:
     '''
     Steps to test basic launch and attestation for SEV-SNP guest
@@ -127,18 +140,18 @@ def steps() -> list[BaseStep]:
             host_dest="request.bin",
             timeout=120,
         ),
-        Step.for_host(
+        Step.for_callable(
             name="Fetch certificate chain from kds",
             type="setup",
-            command='snpguest fetch ca pem "$SEV_VERIFY_ARTIFACT_DIR" -r "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
-            timeout=60,
+            handler="fetch_ca_cached",
+            timeout=240,
         ),
-        Step.for_host(
+        Step.for_callable(
             name="Fetch VCEK from kds",
             type="setup",
-            command='snpguest fetch vcek pem "$SEV_VERIFY_ARTIFACT_DIR" "$SEV_VERIFY_ARTIFACT_DIR/report.bin"',
-            timeout=60,
-        ).add_hint("429", "Rate limited by KDS, re-run in a minute"),
+            handler="fetch_vcek_cached",
+            timeout=240,
+        ),
         Step.for_host(
             name="Verify certificate chain",
             type="required",
