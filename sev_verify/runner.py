@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import shlex
 import subprocess
@@ -81,7 +82,45 @@ def test_artifact_dir(
     return artifacts_root / "prereqs" / test_name
 
 
-def load_test_execution_plan(test: TestDefinition) -> tuple[list[BaseStep], VMProfile | None]:
+def _declared_vm_profile(mod: ModuleType) -> VMProfile | None:
+    """Return the module's ``vm_profile`` instance, if it defines one."""
+    raw = getattr(mod, "vm_profile", None)
+    if raw is None:
+        return None
+    return raw() if callable(raw) else raw
+
+
+def _steps_accept_context(steps_fn: object) -> bool:
+    """True when ``steps`` has a positional parameter for :class:`StepContext`."""
+    try:
+        signature = inspect.signature(steps_fn)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return any(
+        param.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+        for param in signature.parameters.values()
+    )
+
+
+def invoke_steps(mod: ModuleType, ctx: StepContext | None = None) -> list[BaseStep]:
+    """Call ``steps(ctx)`` when it accepts a context, otherwise ``steps()``."""
+    steps_fn = mod.steps
+    if _steps_accept_context(steps_fn):
+        if ctx is None:
+            raise TypeError(
+                f"{mod.__name__}.steps() requires a StepContext; "
+                "the harness supplies one"
+            )
+        return steps_fn(ctx)
+    return steps_fn()
+
+
+def load_test_execution_plan(
+    test: TestDefinition, ctx: StepContext | None = None,
+) -> tuple[list[BaseStep], VMProfile | None]:
     """
     Import the test module once and return steps plus optional VM profile.
 
@@ -89,24 +128,22 @@ def load_test_execution_plan(test: TestDefinition) -> tuple[list[BaseStep], VMPr
     ``vm_profile`` as a callable returning :class:`~sev_verify.vm_profile.VMProfile`,
     or as a :class:`VMProfile` instance. ``image_path`` is always replaced by the
     CLI guest path at launch.
+
+    Pass ``ctx`` so a ``steps(ctx)`` definition can see ``allow_host_changes``.
+    A ``steps()`` that takes no arguments is called without it.
     """
     mod = import_test_module(test)
-    steps = mod.steps()
-    declared: VMProfile | None = None
-    raw = getattr(mod, "vm_profile", None)
-    if raw is not None:
-        declared = raw() if callable(raw) else raw
-    return steps, declared
+    return invoke_steps(mod, ctx), _declared_vm_profile(mod)
 
 
-def load_steps(test: TestDefinition) -> list[BaseStep]:
+def load_steps(test: TestDefinition, ctx: StepContext | None = None) -> list[BaseStep]:
     """Import a test module and call its steps() function."""
-    return load_test_execution_plan(test)[0]
+    return load_test_execution_plan(test, ctx)[0]
 
 
 def load_vm_profile(test: TestDefinition) -> VMProfile | None:
     """Return VM launch settings from the test module, if provided."""
-    return load_test_execution_plan(test)[1]
+    return _declared_vm_profile(import_test_module(test))
 
 
 def run_step(step: BaseStep, guest_path: Path, artifact_dir: Path | None = None) -> StepResult:
@@ -218,8 +255,21 @@ def run_vm_launch_step(
     )
 
 
-def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult) -> StepResult:
-    """Terminate QEMU for ``launch`` (``stop_vm``; ``step.timeout`` is the wait/kill window)."""
+def run_vm_stop_step(step: BaseStep, launch: VMLaunchResult | None) -> StepResult:
+    """Terminate QEMU for ``launch`` (``stop_vm``; ``step.timeout`` is the wait/kill window).
+
+    A missing guest is already stopped, so it passes the default ``exit_code:0``.
+    """
+    if launch is None:
+        msg = "No running guest"
+        passed = _check_expected_values(step, 0, msg)
+        return StepResult(
+            step=step,
+            result="pass" if passed else "fail",
+            exit_code=0 if passed else 1,
+            stdout=msg,
+            duration_ms=0,
+        )
     start = time.monotonic()
     try:
         stop_vm(launch, timeout=float(step.timeout))
@@ -308,7 +358,7 @@ def run_guest_pull_step(
 
 
 def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
-    """Run ``ctx.module.<step.handler>(ctx)`` with a wall-clock timeout (thread pool)."""
+    """Run ``ctx.module.<step.handler>(ctx, **step.args)`` with a wall-clock timeout."""
     start = time.monotonic()
     fn = getattr(ctx.module, step.handler, None)
     if fn is None:
@@ -330,7 +380,7 @@ def run_callable_step(step: BaseStep, ctx: StepContext) -> StepResult:
 
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(fn, ctx)
+            fut = pool.submit(fn, ctx, **step.args)
             try:
                 hr = fut.result(timeout=float(step.timeout))
             except FuturesTimeoutError:

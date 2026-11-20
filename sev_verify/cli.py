@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .environment import detect_environment
+from .processor import CpuidReadError, identify_host_processor
 from .os_info import update_environment_with_guest_os
 from .models import (
     CertificationDefinition,
@@ -24,7 +25,7 @@ from .output import write_json, write_markdown
 from .runner import (
     effective_vm_profile,
     import_test_module,
-    load_test_execution_plan,
+    invoke_steps,
     run_callable_step,
     run_guest_pull_step,
     run_guest_step,
@@ -86,7 +87,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Version filter(s). Accepts: 3.0 (all tests in cert 3.0), "
         "3.0.0 (all level 3.0.0-* tests), 3.0.0-0 (exact level). "
         "Comma-separated lists and repeated -v flags both work. "
-        "If omitted, all cert_tests/*/manifest.toml are used.",
+        "If omitted, the host processor selects the certifications "
+        "up to its generation.",
     )
     parser.add_argument(
         "--output-dir",
@@ -291,6 +293,48 @@ def discover_manifests(
     return results
 
 
+def manifests_for_processor(cert_dir: Path) -> tuple[list[tuple[Path, list[str]]], str]:
+    """Select manifests from the host CPU.
+
+    Returns ``(entries, description)``. Missing generations are skipped so a
+    processor can name a certification whose manifest is not in the tree yet.
+    """
+    try:
+        processor = identify_host_processor()
+    except CpuidReadError as exc:
+        raise ValueError(
+            f"{exc}. Pass -v to select certification versions."
+        ) from exc
+    if processor is None:
+        raise ValueError(
+            "Unrecognized processor. Pass -v to select certification versions."
+        )
+    if not processor.cert_versions:
+        raise ValueError(
+            f"{processor.name} (EPYC {processor.series}) has no certification "
+            "manifests. Pass -v to select versions explicitly."
+        )
+
+    entries: list[tuple[Path, list[str]]] = []
+    present: list[str] = []
+    for version in processor.cert_versions:
+        mpath = cert_dir / ("c" + version.replace(".", "_")) / "manifest.toml"
+        if mpath.is_file():
+            entries.append((mpath, []))
+            present.append(version)
+    if not entries:
+        expected = ", ".join(processor.cert_versions)
+        raise ValueError(
+            f"No certification manifests are present for {processor.name} "
+            f"(EPYC {processor.series}); expected {expected}."
+        )
+    description = (
+        f"{processor.name} (EPYC {processor.series}, {processor.socket}); "
+        f"certifications: {', '.join(present)}"
+    )
+    return entries, description
+
+
 # ── Output helpers ───────────────────────────────────────────────
 
 _RESULT_LABEL = {"pass": "PASS", "fail": "FAIL", "error": "ERR!", "skip": "SKIP"}
@@ -388,7 +432,10 @@ def execute_test(
 
     try:
         try:
-            steps, declared_profile = load_test_execution_plan(test)
+            mod = import_test_module(test)
+            declared_profile = getattr(mod, "vm_profile", None)
+            if callable(declared_profile):
+                declared_profile = declared_profile()
         except Exception as exc:
             _flush(f"   [ERR!] — failed to load module: {exc}")
             return TestResult(
@@ -412,7 +459,6 @@ def execute_test(
                 debug=debug,
             )
 
-        mod = import_test_module(test)
         ctx = StepContext(
             test=test,
             guest_path=guest_path,
@@ -425,6 +471,14 @@ def execute_test(
             cli_ovmf_path=ovmf_path,
             allow_host_changes=allow_host_changes,
         )
+        try:
+            steps = invoke_steps(mod, ctx)
+        except Exception as exc:
+            _flush(f"   [ERR!] — failed to build steps: {exc}")
+            return TestResult(
+                test=test, result="error", step_results=[],
+                started_at=started_at, completed_at=datetime.now(timezone.utc).isoformat(),
+            )
 
         overall = "pass"
         total_steps = len(steps)
@@ -483,12 +537,7 @@ def execute_test(
                 stopped_launch: VMLaunchResult | None = None
                 guest_journal_output: str | None = None
                 if launch is None:
-                    sr = StepResult(
-                        step=step,
-                        result="error",
-                        stderr="vm_stop: no running guest (run vm_launch or a guest step first)",
-                        duration_ms=0,
-                    )
+                    sr = run_vm_stop_step(step, None)
                 else:
                     # Fetch guest journald logs before stopping the VM (only in debug mode)
                     if debug:
@@ -757,7 +806,15 @@ def main(argv: list[str] | None = None) -> int:
     cert_dir = Path(__file__).resolve().parent / "cert_tests"
 
     version_filters = _parse_version_filters(args.versions)
-    manifest_entries = discover_manifests(cert_dir, version_filters)
+    processor_line = None
+    if version_filters:
+        manifest_entries = discover_manifests(cert_dir, version_filters)
+    else:
+        try:
+            manifest_entries, processor_line = manifests_for_processor(cert_dir)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
 
     if not manifest_entries:
         print(
@@ -767,6 +824,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     _flush(f"   Guest:  {guest_path}")
+    if processor_line:
+        _flush(f"   Processor: {processor_line}")
     if environment.get("host_os_pretty_name"):
         _flush(f"   Host:   {environment['host_os_pretty_name']}")
     if environment.get("kernel_version"):
