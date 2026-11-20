@@ -272,18 +272,9 @@ def verify_lowered_report_signature(ctx: StepContext) -> StepHandlerResult:
     certs_dir = ctx.artifact_dir / "vcek_lowered"
     certs_dir.mkdir(parents=True, exist_ok=True)
 
-    fetch = subprocess.run(
-        ["snpguest", "fetch", "vcek", "pem", str(certs_dir), str(report_path)],
-        capture_output=True, text=True, timeout=120,
-    )
-    if fetch.returncode != 0:
-        stderr = fetch.stderr.strip()
-        hint = " (KDS rate-limited; re-run in a minute)" if "429" in stderr else ""
-        return StepHandlerResult(
-            exit_code=1,
-            stderr=f"snpguest fetch vcek failed{hint}: {stderr}",
-            command=shlex.join(fetch.args),
-        )
+    ok, msg = ctx.kds.fetch_vcek(report_path, certs_dir)
+    if not ok:
+        return StepHandlerResult(exit_code=1, stderr=msg)
 
     verify = subprocess.run(
         [
@@ -496,8 +487,7 @@ def steps() -> list[BaseStep]:
             name="verify-lowered-report-signature",
             type="required",
             handler="verify_lowered_report_signature",
-            # Covers both subprocesses (fetch + verify, 120s each) with headroom.
-            timeout=270,
+            timeout=360,
         ).add_hint("429", "Rate limited by KDS, re-run in a minute"),
         # 9. Restore TCB via config reset
         Step.for_host(
