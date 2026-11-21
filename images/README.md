@@ -4,13 +4,9 @@ mkosi image definitions for SEV-SNP host and guest environments. Each subdirecto
 
 ## Build
 
-### 1. Fetch dependency tags
+### 1. Dependency versions
 
-```bash
-make tags
-```
-
-This queries the GitHub API for the latest release tag of each build dependency and writes them to `.tags`:
+Image builds read the release tag of each build dependency from [`versions.env`](../versions.env), so they are not necessarily the latest upstream release. If an entry is left empty, the latest upstream release is looked up on GitHub instead:
 
 | Variable | Repository | Used by |
 |---|---|---|
@@ -18,18 +14,40 @@ This queries the GitHub API for the latest release tag of each build dependency 
 | `BEACON_TAG` | [AMDEPYC/beacon](https://github.com/AMDEPYC/beacon) | Host images |
 | `SNPHOST_TAG` | [virtee/snphost](https://github.com/virtee/snphost) | Host images |
 
-The `.tags` file is passed to mkosi via `--env-file` so each build script uses the pre-fetched tag rather than calling the GitHub API individually. This avoids rate-limit issues when building multiple images (the GitHub API allows 60 unauthenticated requests/hour).
+#### Excluded tags (not passed to mkosi)
 
-Re-run `make tags` whenever you want to pick up a new release of one of the dependencies. The `.tags` file is not checked in, so it won't update automatically.
+You can track version details for components not involved in the mkosi build process by logging them in `versions.env` as excluded tags:
 
-If you hit rate limits, set a token first:
+| Variable | Repository | Purpose |
+|---|---|---|
+| `DISPATCH_TAG` | [AMDEPYC/dispatch](https://github.com/AMDEPYC/dispatch) | Release to run on Dispatch Host with these images; not built into images |
+
+Excluded tags like `DISPATCH_TAG` are allowed in `versions.env` but not passed to mkosi. The `check_versions_env` script validates that the TAG name is listed in `versions.env`, but several additional checks are skipped for excluded tags: release existence on GitHub, asset presence, and download availability are not verified.
+
+The resolved tags are written to `.tags` and passed to mkosi via `--env-file`, so each build script uses them rather than calling the GitHub API individually. A latest tag is looked up at most once per `make` run, by following the `github.com/<repo>/releases/latest` redirect, so no GitHub token is needed and the API rate limit (60 unauthenticated requests/hour) does not apply.
+
+To check `versions.env` and see the tags a build will use:
 
 ```bash
-export GITHUB_TOKEN=$(gh auth token)
-make tags
+make versions
 ```
 
-> **Note**: In CI, the workflow fetches these same tags and injects them directly into mkosi configs, so `make tags` is only needed for local builds.
+```
+SNPGUEST_TAG=v0.10.0
+BEACON_TAG=v1.1.0
+SNPHOST_TAG=v0.9.0
+```
+
+This validates `versions.env`, confirms every pinned tag is an existing GitHub release and that the files the builds download are available, then writes the tags to `.tags` and prints them. Any problem stops `make` before mkosi starts. Every image build runs it first, so run it alone only to preview tags or check a `versions.env` change. `make check-versions` runs just the checks.
+
+To try a different version without editing `versions.env`, override it on the command line (an empty value fetches the latest release). The override applies only to that command:
+
+```bash
+make SNPGUEST_TAG=v0.10.0 guest-fedora-41
+make SNPGUEST_TAG= guest-fedora-41
+```
+
+> **Note**: In CI, the `resolve-tags` job of the `build-and-release` workflow resolves these same tags from `versions.env` and the build jobs inject them directly into mkosi configs.
 
 ### 2. Build images
 

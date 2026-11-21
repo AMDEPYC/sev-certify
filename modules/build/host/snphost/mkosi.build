@@ -2,9 +2,12 @@
 set -euo pipefail
 set -x
 
-# Use SNPHOST_TAG if set, otherwise fetch from GitHub API
-LATEST_TAG="${SNPHOST_TAG:-$(curl -s https://api.github.com/repos/virtee/snphost/releases/latest | jq -r '.tag_name')}"
+# SNPHOST_TAG is resolved by one of:
+# - CI: resolve-tags job resolves SNPHOST_TAG (pinned in versions.env or latest release)
+#   and passes it via mkosi.conf injection: Environment=SNPHOST_TAG=<tag>
+# - Local: images Makefile resolves SNPHOST_TAG and passes it via .tags env-file
+: "${SNPHOST_TAG:?SNPHOST_TAG is not set; build through the images Makefile or CI workflow}"
 
 # Download and install into DESTDIR with correct permissions
-curl -fsSL "https://github.com/virtee/snphost/releases/download/${LATEST_TAG}/snphost" \
+curl -fsSL "https://github.com/virtee/snphost/releases/download/${SNPHOST_TAG}/snphost" \
   | install -D -m 0755 /dev/stdin "${DESTDIR}/usr/local/bin/snphost"

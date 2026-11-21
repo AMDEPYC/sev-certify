@@ -2,9 +2,12 @@
 set -euo pipefail
 set -x
 
-# Use SNPGUEST_TAG if set, otherwise fetch from GitHub API
-LATEST_TAG="${SNPGUEST_TAG:-$(curl -s https://api.github.com/repos/virtee/snpguest/releases/latest | jq -r '.tag_name')}"
+# SNPGUEST_TAG is set after the versions check, from versions.env (pinned tag, or the
+# latest release if empty):
+#   - local builds: the images Makefile writes it to .tags and passes it with --env-file
+#   - CI builds: the resolve-tags job's output, injected as Environment= in mkosi.conf
+: "${SNPGUEST_TAG:?SNPGUEST_TAG is not set; build through the images Makefile or CI}"
 
 # Download and install into DESTDIR with correct permissions
-curl -fsSL "https://github.com/virtee/snpguest/releases/download/${LATEST_TAG}/snpguest" \
+curl -fsSL "https://github.com/virtee/snpguest/releases/download/${SNPGUEST_TAG}/snpguest" \
   | install -D -m 0755 /dev/stdin "${DESTDIR}/usr/local/bin/snpguest"
