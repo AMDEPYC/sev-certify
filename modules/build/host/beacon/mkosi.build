@@ -2,9 +2,12 @@
 set -euo pipefail
 set -x
 
-# Use BEACON_TAG if set, otherwise fetch from GitHub API
-LATEST_TAG="${BEACON_TAG:-$(curl -s https://api.github.com/repos/AMDEPYC/beacon/releases/latest | jq -r '.tag_name')}"
+# BEACON_TAG is resolved by one of:
+# - CI: resolve-tags job resolves BEACON_TAG (pinned in versions.env or latest release)
+#   and passes it via mkosi.conf injection: Environment=BEACON_TAG=<tag>
+# - Local: images Makefile resolves BEACON_TAG and passes it via .tags env-file
+: "${BEACON_TAG:?BEACON_TAG is not set; build through the images Makefile or CI workflow}"
 
 # Download and install into DESTDIR with correct permissions
-curl -fsSL "https://github.com/AMDEPYC/beacon/releases/download/${LATEST_TAG}/beacon-linux-x86_64" \
+curl -fsSL "https://github.com/AMDEPYC/beacon/releases/download/${BEACON_TAG}/beacon-linux-x86_64" \
   | install -D -m 0755 /dev/stdin "${DESTDIR}/usr/local/bin/beacon"

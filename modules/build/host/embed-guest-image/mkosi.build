@@ -14,7 +14,13 @@ GUEST_IMAGE_DIR="${DESTDIR}/usr/local/lib/guest-image"
 if [ ! -f "$GUEST_CONFIG_DIR/${GUEST_IMAGE_ID}.efi" ]; then  
    echo "Guest Image not built, building image for embedding."
    #Build the guest image
-   mkosi --image-id="${GUEST_IMAGE_ID}" -C "${GUEST_CONFIG_DIR}"  build
+   # The nested mkosi does not inherit the component tags the outer build was given
+   # (--env-file), so forward SNPGUEST_TAG when set; in CI it comes from mkosi.conf instead
+   MKOSI_ENV=()
+   if [ -n "${SNPGUEST_TAG:-}" ]; then
+      MKOSI_ENV+=("--environment=SNPGUEST_TAG=${SNPGUEST_TAG}")
+   fi
+   mkosi --image-id="${GUEST_IMAGE_ID}" -C "${GUEST_CONFIG_DIR}" "${MKOSI_ENV[@]}" build
 else
    echo "Guest Image already built, embedding found efi."
 fi
