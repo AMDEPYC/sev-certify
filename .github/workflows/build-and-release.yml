@@ -69,11 +69,18 @@ jobs:
             version_vars+=("${name^^}_TAG")
           done
 
+          # Excluded tags: tracked in versions.env but not resolved/validated in this step
+          # (e.g., dispatch is not built into images, so not downloaded/checked here)
+          excluded_tags=(DISPATCH_TAG)
+
+          # All allowed variables (resolved + excluded)
+          all_allowed_vars=("${version_vars[@]}" "${excluded_tags[@]}")
+
           # Reject anything other than comments, blank lines and NAME=TAG for known names,
           # so a typo'd name doesn't silently fall back to the upstream latest release
-          alternatives=$(IFS='|'; echo "${version_vars[*]}")
+          alternatives=$(IFS='|'; echo "${all_allowed_vars[*]}")
           if bad=$(grep -nvE "^[[:space:]]*(#|\$)|^($alternatives)=[^[:space:]]*\$" versions.env); then
-            echo "::error file=versions.env::Unexpected line(s); expected NAME=TAG with NAME one of ${version_vars[*]}"
+            echo "::error file=versions.env::Unexpected line(s); expected NAME=TAG with NAME one of ${all_allowed_vars[*]}"
             echo "$bad" >&2
             exit 1
           fi
