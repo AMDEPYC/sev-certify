@@ -27,9 +27,121 @@ permissions:
   actions: read    # Required for workflow access
 
 jobs:
+  # Resolve component versions once: pinned in versions.env, else upstream latest
+  resolve-tags:
+    name: resolve component tags
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      snphost: ${{ steps.resolve.outputs.snphost }}
+      snpguest: ${{ steps.resolve.outputs.snpguest }}
+      beacon: ${{ steps.resolve.outputs.beacon }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tags (pin from versions.env, fallback to latest)
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Components to resolve. Each <name> is also the output name and, upper-cased,
+          # the NAME_TAG variable in versions.env. These are all built into the images.
+          components=(snphost snpguest beacon)
+          declare -A repos=(
+            [snphost]=virtee/snphost
+            [snpguest]=virtee/snpguest
+            [beacon]=AMDEPYC/beacon
+          )
+          # Release assets the mkosi.build scripts download
+          declare -A assets=(
+            [snphost]=snphost
+            [snpguest]=snpguest
+            [beacon]=beacon-linux-x86_64
+          )
+
+          # Variables allowed in versions.env, derived from the components above
+          version_vars=()
+          for name in "${components[@]}"; do
+            version_vars+=("${name^^}_TAG")
+          done
+
+          # Reject anything other than comments, blank lines and NAME=TAG for known names,
+          # so a typo'd name doesn't silently fall back to the upstream latest release
+          alternatives=$(IFS='|'; echo "${version_vars[*]}")
+          if bad=$(grep -nvE "^[[:space:]]*(#|\$)|^($alternatives)=[^[:space:]]*\$" versions.env); then
+            echo "::error file=versions.env::Unexpected line(s); expected NAME=TAG with NAME one of ${version_vars[*]}"
+            echo "$bad" >&2
+            exit 1
+          fi
+          . versions.env
+
+          # Pinned tags are looked up too, so a typo'd tag fails here rather than mid-build
+          resolve() {  # $1=repo $2=pinned tag
+            gh release view ${2:+"$2"} --repo "$1" --json tagName --jq '.tagName' || {
+              echo "::error file=versions.env::Failed to resolve release ${2:-latest} of $1" >&2
+              return 1
+            }
+          }
+
+          # Check the release asset the mkosi.build scripts download is reachable
+          # (first byte only, following redirects), so a release missing the asset
+          # fails here rather than mid-build
+          check_download() {  # $1=repo $2=tag $3=asset
+            local url="https://github.com/$1/releases/download/$2/$3" code
+            code=$(curl -sL -r 0-0 -o /dev/null -w '%{http_code}' "$url") || code=000
+            case "$code" in
+              200|206) echo "OK: $url" ;;
+              *)
+                echo "::error::Cannot download $url (HTTP $code); check that release $2 of $1 has asset $3"
+                return 1
+                ;;
+            esac
+          }
+
+          declare -A tags
+          summary=()
+          for name in "${components[@]}"; do
+            repo=${repos[$name]}
+            pin_var="${name^^}_TAG"
+            pinned="${!pin_var:-}"
+
+            # Assign first so a failing resolve aborts the step under set -e
+            tag=$(resolve "$repo" "$pinned")
+            if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+              echo "::error::Failed to resolve release tag for $repo"
+              exit 1
+            fi
+            tags[$name]=$tag
+            source=${pinned:+pinned}; source=${source:-latest}
+            summary+=("| $repo | $tag | $source |")
+          done
+
+          failed=0
+          for name in "${components[@]}"; do
+            check_download "${repos[$name]}" "${tags[$name]}" "${assets[$name]}" || failed=1
+          done
+          [ "$failed" -eq 0 ] || exit 1
+
+          for name in "${components[@]}"; do
+            echo "$name=${tags[$name]}" >> "$GITHUB_OUTPUT"
+          done
+
+          {
+            echo "### Resolved component versions"
+            echo
+            echo "| Repository | Version | Source |"
+            echo "|---|---|---|"
+            printf '%s\n' "${summary[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Development release for tag or main pushes
   create-release:
     name: create new release for tagged or latest assets
+    needs: resolve-tags
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.replace_release == 'true')
     steps:
@@ -63,6 +175,7 @@ jobs:
 
   build:
     name: ${{ matrix.distro }}-${{ matrix.release }}
+    needs: resolve-tags
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -99,21 +212,29 @@ jobs:
           sudo apt update
           sudo apt install -y mkosi
 
-      - name: Fetch latest release tags
+      - name: Apply resolved release tags
+        # Tags resolved once by the resolve-tags job (pinned in versions.env, else upstream latest).
+        # Passed via env rather than interpolated into the script to avoid shell injection.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SNPGUEST_TAG: ${{ needs.resolve-tags.outputs.snpguest }}
+          BEACON_TAG: ${{ needs.resolve-tags.outputs.beacon }}
+          SNPHOST_TAG: ${{ needs.resolve-tags.outputs.snphost }}
         run: |
           set -euo pipefail
-          
-          # Fetch latest tags using gh CLI (automatically authenticated)
-          SNPGUEST_TAG=$(gh release view --repo virtee/snpguest --json tagName --jq '.tagName')
-          BEACON_TAG=$(gh release view --repo AMDEPYC/beacon --json tagName --jq '.tagName')
-          SNPHOST_TAG=$(gh release view --repo virtee/snphost --json tagName --jq '.tagName')
-          
+
+          # mkosi.conf files to inject into; the component is the module directory name
+          version_confs=(
+            modules/build/common/snpguest/mkosi.conf
+            modules/build/host/beacon/mkosi.conf
+            modules/build/host/snphost/mkosi.conf
+          )
+
           # Inject environment variables into mkosi.conf files
-          sed -i "/^\[Build\]/a\Environment=SNPGUEST_TAG=$SNPGUEST_TAG" modules/build/common/snpguest/mkosi.conf
-          sed -i "/^\[Build\]/a\Environment=BEACON_TAG=$BEACON_TAG" modules/build/host/beacon/mkosi.conf
-          sed -i "/^\[Build\]/a\Environment=SNPHOST_TAG=$SNPHOST_TAG" modules/build/host/snphost/mkosi.conf
+          for conf in "${version_confs[@]}"; do
+            component=$(basename "$(dirname "$conf")")
+            var="${component^^}_TAG"
+            sed -i "/^\[Build\]/a\Environment=$var=${!var}" "$conf"
+          done
 
       - name: Build guest-${{ matrix.distro }}-${{ matrix.release }}
         run: |
