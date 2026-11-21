@@ -36,13 +36,33 @@ References:
 
 ### 2. Download `AMDEPYC/dispatch`
 
-Download the [latest dispatch binaries](https://github.com/AMDEPYC/dispatch/releases)
-through your browser or through `gh`:
+Download the dispatch binary matching the images you will serve. The release to use is managed by
+`DISPATCH_TAG` in [`../versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env),
+which is validated for compatibility with the images.
+
+**How it works:**
+- If `DISPATCH_TAG` is pinned (e.g., `DISPATCH_TAG=v1.1.0`), the script downloads that specific release
+- If `DISPATCH_TAG` is empty, the script automatically downloads the latest available release
+
+Run the following script from the `sev-certify` working directory:
+
+```bash
+# Read DISPATCH_TAG from versions.env and download dispatch binary
+DISPATCH_TAG=$(sed -n 's/^DISPATCH_TAG=//p' versions.env)
+if [ -n "$DISPATCH_TAG" ]; then
+  RELEASE_URL="https://github.com/AMDEPYC/dispatch/releases/download/$DISPATCH_TAG/dispatch-linux-x86_64"
+  if ! curl -sfI "$RELEASE_URL" > /dev/null; then
+    echo "Error: Release $DISPATCH_TAG not found at $RELEASE_URL"
+    exit 1
+  fi
+  curl -sL -o dispatch-linux-x86_64 "$RELEASE_URL"
+else
+  curl -sL -o dispatch-linux-x86_64 "https://github.com/AMDEPYC/dispatch/releases/latest/download/dispatch-linux-x86_64"
+fi && chmod a+x dispatch-linux-x86_64
 ```
-gh release download -R github.com/AMDEPYC/dispatch --pattern 'dispatch-*'
-chmod a+x dispatch*
-```
-Or clone the repository and build it from source.
+
+Alternatively, you can download the binaries through your browser or clone the
+[dispatch repository](https://github.com/AMDEPYC/dispatch) and build it from source.
 
 ### 3. Run dispatch to start serving images
 

@@ -53,6 +53,8 @@ You can create and publish new host or guest images in `sev-certify` with `mkosi
 
     Then, verify for successful execution with the built new host and guest OS images under `devel` tag.
 
+    [`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both the `images/Makefile` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release. The `resolve-tags` job writes a "Resolved component versions" table (repository, version, and whether it was pinned or the latest) to the workflow run's Summary page in the GitHub Actions UI.
+
     If the `build-and-release` workflow fails, you need to troubleshoot for the error in the workflow log, implement changes, and retest until successful execution.
 
 - **<ins>Test the new OS Host/Guest Images:</ins>** 
@@ -174,7 +176,6 @@ Manifest generation is **disabled by default** to reduce build time (~100 second
 ```bash
 # Build all images with manifest generation
 cd images
-make tags
 make GENERATE_MANIFEST=yes all
 
 # Build a specific image with manifest generation
@@ -183,11 +184,34 @@ make GENERATE_MANIFEST=yes guest-<distro>-<release>
 
 The `GENERATE_MANIFEST` variable defaults to empty in the Makefile. When set to a truthy value (`y`, `yes`, or `1`), mkosi is invoked with the environment variable to generate manifest files.
 
-**For local builds using mkosi directly**, pass the environment variable:
+[`versions.env`](https://github.com/AMDEPYC/sev-certify/blob/main/versions.env) provides the `snphost`, `snpguest` and `beacon` versions used by both the `images/Makefile` and the `build-and-release` workflow. An empty entry falls back to the latest upstream release.
+
+**Build local images with the `make` targets above rather than invoking mkosi directly.** The component versions have to be resolved and checked before the image build starts, and the `make` targets do this for you. The `mkosi.build` scripts fail if `SNPGUEST_TAG`, `SNPHOST_TAG` or `BEACON_TAG` is unset, so running mkosi on its own fails.
+
+Before mkosi starts, every image target runs `make versions`, which:
+- Checks if pinned tags exist on GitHub and assets are downloadable
+- Resolves component tags (pinned or latest) and passes them to mkosi
+
+If any check fails, `make` stops before the build starts. To run the checks manually:
 
 ```bash
-mkosi --image-id=guest-<distro>-<release> -C images/guest-<distro>-<release>/ build --environment=GENERATE_MANIFEST=yes
+cd images
+make versions
 ```
+
+To build a particular host or guest image with specific component versions, set the tags on the `make` command line. Command-line values override `versions.env` for that command only and go through the same checks before the build starts. An empty value (for example `SNPHOST_TAG=`) uses the latest upstream release.
+
+```bash
+cd images
+
+# Guest image: only snpguest is built into it
+make SNPGUEST_TAG=v0.10.0 GENERATE_MANIFEST=yes guest-<distro>-<release>
+
+# Host image: snphost and beacon, plus snpguest in the embedded guest image
+make SNPHOST_TAG=v0.7.0 BEACON_TAG=v1.1.0 SNPGUEST_TAG=v0.10.0 GENERATE_MANIFEST=yes host-<distro>-<release>
+```
+
+To check the overridden versions without building, pass the same values to `make versions`, for example `make SNPHOST_TAG=v0.7.0 versions`.
 
 **For CI builds**, check the "Generate package manifest and changelog files" option when manually triggering the `build-and-release` workflow via "Run workflow". When enabled, manifest files are automatically attached to a separate `devel-os-package-manifests` (or `<tag>-os-package-manifests`) release alongside the image releases.
 

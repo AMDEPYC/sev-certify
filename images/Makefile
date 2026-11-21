@@ -7,6 +7,9 @@ CLEAN_IMAGES := $(addprefix clean-,$(IMAGES))
 VERSIONS_ENV := ../versions.env
 include $(VERSIONS_ENV)
 
+# Space character for use in $(subst) (e.g., $(subst $(space),|,$(list)))
+space := $(subst ,, )
+
 # $(call latest_release,owner/repo)
 #   Returns the tag of the latest GitHub release of owner/repo, e.g.
 #   $(call latest_release,virtee/snpguest) -> v0.11.0
@@ -60,13 +63,21 @@ $(or
     $(call latest_release,$(2)))
 endef
 
+# Tags validated in versions.env (components passed to mkosi)
+TAGS_TO_VALIDATE := SNPHOST_TAG SNPGUEST_TAG BEACON_TAG
+
+# Tags allowed in versions.env but not validated (not used by mkosi)
+EXCLUDE_TAGS := DISPATCH_TAG
+
 # $(call check_versions_env,file)
 #   Recipe that fails, listing the offending lines, if file contains anything
 #   other than blank lines, comments, or NAME=TAG for a known NAME.
+#   Validates TAGS_TO_VALIDATE; allows EXCLUDE_TAGS without validation.
 define check_versions_env
-@bad=$$(grep -nvE '^[[:space:]]*(#|$$)|^(SNPHOST_TAG|SNPGUEST_TAG|BEACON_TAG)=[^[:space:]]*$$' $(1) || true); \
+@pattern='^[[:space:]]*(#|$$)|^(SNPHOST_TAG|SNPGUEST_TAG|BEACON_TAG|DISPATCH_TAG)=[^[:space:]]*$$'; \
+bad=$$(grep -nvE "$$pattern" $(1) || true); \
 if [ -n "$$bad" ]; then \
-	echo "$(1): unexpected line(s); expected NAME=TAG with NAME one of SNPHOST_TAG, SNPGUEST_TAG, BEACON_TAG" >&2; \
+	echo "$(1): unexpected line(s); expected NAME=TAG with NAME one of $(TAGS_TO_VALIDATE)" >&2; \
 	echo "$$bad" >&2; \
 	exit 1; \
 fi
@@ -110,6 +121,10 @@ COMPONENTS := \
 	SNPGUEST_TAG:virtee/snpguest:snpguest \
 	BEACON_TAG:AMDEPYC/beacon:beacon-linux-x86_64 \
 	SNPHOST_TAG:virtee/snphost:snphost
+
+# Tags excluded from mkosi image building validation (e.g., tracked for compatibility
+# but not passed to mkosi; see TAGS definition)
+EXCLUDE_TAGS := DISPATCH_TAG
 
 # $(call field,n,VAR:owner/repo:asset)
 #   Returns the n-th colon-separated field of a COMPONENTS entry, e.g.
